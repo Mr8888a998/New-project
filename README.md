@@ -2,6 +2,21 @@
 
 Local football handicap analysis tool.
 
+## Setup
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+Use the bundled Codex Python in this workspace when the standard `python`
+command points to the Windows Store alias.
+
+## Test
+
+```bash
+python -m pytest
+```
+
 ## MVP Flow
 
 1. Import free-source odds data.
