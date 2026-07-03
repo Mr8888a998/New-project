@@ -17,6 +17,12 @@ from handicap_ai.names import normalize_team_name
 
 
 REQUIRED_FIELDS = ("Div", "Date", "HomeTeam", "AwayTeam")
+AH_CURRENT_FIELDS = ("AHCh", "B365CAHH", "B365CAHA")
+AH_FALLBACK_FIELDS = ("AHh", "B365AHH", "B365AHA")
+TOTAL_CURRENT_FIELDS = ("Avg>2.5", "Avg<2.5")
+TOTAL_FALLBACK_FIELDS = ("BbAv>2.5", "BbAv<2.5")
+ONE_X_TWO_CURRENT_FIELDS = ("B365CH", "B365CD", "B365CA")
+ONE_X_TWO_FALLBACK_FIELDS = ("B365H", "B365D", "B365A")
 
 
 class FootballDataCsvAdapter:
@@ -54,8 +60,8 @@ class FootballDataCsvAdapter:
         away = self._required_value(row, "AwayTeam", row_number)
         kickoff_time = self._required_date(row, row_number)
         source_match_id = self._source_match_id(competition, home, away, kickoff_time)
-        home_score = _int_or_none(row.get("FTHG"))
-        away_score = _int_or_none(row.get("FTAG"))
+        home_score = _int_field(row, "FTHG", row_number)
+        away_score = _int_field(row, "FTAG", row_number)
         match = MatchRecord(
             source_match_id=source_match_id,
             home_team=home,
@@ -74,9 +80,11 @@ class FootballDataCsvAdapter:
         return NormalizedMatchBundle(
             match=match,
             teams=(TeamRecord(home), TeamRecord(away)),
-            asian_handicaps=tuple(self._asian_handicaps(source_match_id, row)),
-            totals=tuple(self._totals(source_match_id, row)),
-            one_x_two=tuple(self._one_x_two(source_match_id, row)),
+            asian_handicaps=tuple(
+                self._asian_handicaps(source_match_id, row, row_number)
+            ),
+            totals=tuple(self._totals(source_match_id, row, row_number)),
+            one_x_two=tuple(self._one_x_two(source_match_id, row, row_number)),
         )
 
     def _required_value(
@@ -111,10 +119,23 @@ class FootballDataCsvAdapter:
         self,
         source_match_id: str,
         row: dict[str, str],
+        row_number: int,
     ) -> list[AsianHandicapLineRecord]:
-        line = _float_or_none(_first_value(row, ("AHCh", "AHh")))
-        if line is None:
+        fields = (
+            AH_CURRENT_FIELDS
+            if _has_any_value(row, AH_CURRENT_FIELDS)
+            else AH_FALLBACK_FIELDS
+        )
+        if not _has_any_value(row, fields):
             return []
+
+        line_field, home_price_field, away_price_field = fields
+        if _clean_value(row.get(line_field)) is None:
+            raise ValueError(
+                f"football-data row {row_number}: malformed AH snapshot; "
+                f"field {line_field} is required when AH prices are present"
+            )
+
         return [
             AsianHandicapLineRecord(
                 source_match_id=source_match_id,
@@ -122,13 +143,9 @@ class FootballDataCsvAdapter:
                 bookmaker="B365",
                 is_opening=False,
                 is_closing=True,
-                line=line,
-                home_price=_float_or_none(
-                    _first_value(row, ("B365CAHH", "B365AHH"))
-                ),
-                away_price=_float_or_none(
-                    _first_value(row, ("B365CAHA", "B365AHA"))
-                ),
+                line=_float_field(row, line_field, row_number),
+                home_price=_float_field(row, home_price_field, row_number),
+                away_price=_float_field(row, away_price_field, row_number),
             )
         ]
 
@@ -136,11 +153,17 @@ class FootballDataCsvAdapter:
         self,
         source_match_id: str,
         row: dict[str, str],
+        row_number: int,
     ) -> list[TotalsLineRecord]:
-        over_price = _float_or_none(_first_value(row, ("Avg>2.5", "BbAv>2.5")))
-        under_price = _float_or_none(_first_value(row, ("Avg<2.5", "BbAv<2.5")))
-        if over_price is None and under_price is None:
+        fields = (
+            TOTAL_CURRENT_FIELDS
+            if _has_any_value(row, TOTAL_CURRENT_FIELDS)
+            else TOTAL_FALLBACK_FIELDS
+        )
+        if not _has_any_value(row, fields):
             return []
+
+        over_field, under_field = fields
         return [
             TotalsLineRecord(
                 source_match_id=source_match_id,
@@ -149,8 +172,8 @@ class FootballDataCsvAdapter:
                 is_opening=False,
                 is_closing=True,
                 total=2.5,
-                over_price=over_price,
-                under_price=under_price,
+                over_price=_float_field(row, over_field, row_number),
+                under_price=_float_field(row, under_field, row_number),
             )
         ]
 
@@ -158,12 +181,17 @@ class FootballDataCsvAdapter:
         self,
         source_match_id: str,
         row: dict[str, str],
+        row_number: int,
     ) -> list[OneXTwoLineRecord]:
-        home_price = _float_or_none(_first_value(row, ("B365CH", "B365H")))
-        draw_price = _float_or_none(_first_value(row, ("B365CD", "B365D")))
-        away_price = _float_or_none(_first_value(row, ("B365CA", "B365A")))
-        if home_price is None and draw_price is None and away_price is None:
+        fields = (
+            ONE_X_TWO_CURRENT_FIELDS
+            if _has_any_value(row, ONE_X_TWO_CURRENT_FIELDS)
+            else ONE_X_TWO_FALLBACK_FIELDS
+        )
+        if not _has_any_value(row, fields):
             return []
+
+        home_field, draw_field, away_field = fields
         return [
             OneXTwoLineRecord(
                 source_match_id=source_match_id,
@@ -171,9 +199,9 @@ class FootballDataCsvAdapter:
                 bookmaker="B365",
                 is_opening=False,
                 is_closing=True,
-                home_win_price=home_price,
-                draw_price=draw_price,
-                away_win_price=away_price,
+                home_win_price=_float_field(row, home_field, row_number),
+                draw_price=_float_field(row, draw_field, row_number),
+                away_win_price=_float_field(row, away_field, row_number),
             )
         ]
 
@@ -206,26 +234,43 @@ def _parse_date(value: str | None) -> datetime | None:
     return None
 
 
-def _float_or_none(value: str | None) -> float | None:
-    cleaned = _clean_value(value)
+def _float_field(
+    row: dict[str, str],
+    field_name: str,
+    row_number: int,
+) -> float | None:
+    cleaned = _clean_value(row.get(field_name))
     if cleaned is None:
         return None
-    return float(cleaned)
+    try:
+        return float(cleaned)
+    except ValueError as exc:
+        raise ValueError(
+            f"football-data row {row_number}: field {field_name} must be numeric"
+        ) from exc
 
 
-def _int_or_none(value: str | None) -> int | None:
-    cleaned = _clean_value(value)
+def _int_field(
+    row: dict[str, str],
+    field_name: str,
+    row_number: int,
+) -> int | None:
+    cleaned = _clean_value(row.get(field_name))
     if cleaned is None:
         return None
-    return int(cleaned)
+    try:
+        return int(cleaned)
+    except ValueError as exc:
+        raise ValueError(
+            f"football-data row {row_number}: field {field_name} must be numeric"
+        ) from exc
 
 
-def _first_value(row: dict[str, str], field_names: tuple[str, ...]) -> str | None:
-    for field_name in field_names:
-        value = _clean_value(row.get(field_name))
-        if value is not None:
-            return value
-    return None
+def _has_any_value(row: dict[str, str], field_names: tuple[str, ...]) -> bool:
+    return any(
+        _clean_value(row.get(field_name)) is not None
+        for field_name in field_names
+    )
 
 
 def _clean_value(value: str | None) -> str | None:
