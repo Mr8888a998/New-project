@@ -34,7 +34,6 @@ class TotalCover(str, Enum):
     OVER_WIN = "over"
     OVER_HALF_WIN = "over_half_win"
     PUSH = "push"
-    OVER_HALF_LOSS = "over_half_loss"
     UNDER_HALF_WIN = "under_half_win"
     UNDER_WIN = "under"
 
