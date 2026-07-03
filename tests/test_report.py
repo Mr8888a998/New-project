@@ -1,6 +1,12 @@
+from handicap_ai.features import MatchFeatures
 from handicap_ai.models import Pick
-from handicap_ai.recommendation import MarketRecommendation, RecommendationReport
+from handicap_ai.recommendation import (
+    MarketRecommendation,
+    RecommendationEngine,
+    RecommendationReport,
+)
 from handicap_ai.report import render_text_report
+from handicap_ai.similarity import SimilarityResult
 
 
 def test_render_text_report_contains_required_markets():
@@ -101,3 +107,49 @@ def test_render_text_report_outputs_no_bet_and_none_when_no_risk_tags():
         "Risk tags",
         "- none",
     ]
+
+
+def test_render_text_report_omits_machine_tokens_from_engine_reasons():
+    features = MatchFeatures(
+        open_handicap=-1.75,
+        close_handicap=-2.25,
+        handicap_delta=-0.5,
+        open_total=3.0,
+        close_total=3.25,
+        total_delta=0.25,
+        home_water_delta=-0.07,
+        away_water_delta=0.12,
+        over_water_delta=0.0,
+        under_water_delta=0.0,
+        closing_home_win_price=1.30,
+        closing_draw_price=5.00,
+        closing_away_win_price=9.00,
+        movement_patterns=("line_up_price_down", "line_up_price_stable"),
+        line_depth_score=2.25,
+        market_disagreement_score=0.2,
+        data_quality_score=1.0,
+    )
+    similar = [
+        SimilarityResult(
+            match_id=1,
+            distance=0.1,
+            labels={"handicap": "away_cover", "total": "under", "1x2": "home_win"},
+        ),
+        SimilarityResult(
+            match_id=2,
+            distance=0.2,
+            labels={"handicap": "away_cover", "total": "under", "1x2": "home_win"},
+        ),
+        SimilarityResult(
+            match_id=3,
+            distance=0.3,
+            labels={"handicap": "home_cover", "total": "over", "1x2": "home_win"},
+        ),
+    ]
+
+    report = RecommendationEngine().recommend(features, similar)
+    text = render_text_report("England", "Panama", report)
+
+    assert "sample_size=" not in text
+    assert "hit_rate=" not in text
+    assert "based on 3 samples at 66.67%" in text

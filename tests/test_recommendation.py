@@ -243,7 +243,7 @@ def test_positive_handicap_with_away_cover_support_recommends_away():
 
     assert report.handicap.pick == Pick.AWAY
     assert report.handicap.hit_rate == 0.6
-    assert "sample_size=5" in report.handicap.reason
+    assert "based on 5 samples at 60.00%" in report.handicap.reason
 
 
 def test_total_without_line_delta_can_follow_under_support():
@@ -262,7 +262,7 @@ def test_total_without_line_delta_can_follow_under_support():
 
     assert report.total.pick == Pick.UNDER
     assert report.total.hit_rate == 0.6
-    assert "sample_size=5" in report.total.reason
+    assert "based on 5 samples at 60.00%" in report.total.reason
 
     empty_report = RecommendationEngine().recommend(
         _features(total_delta=None, closing_home_win_price=2.10),
@@ -324,8 +324,9 @@ def test_reasons_include_sample_count_or_no_bet_rationale():
         [],
     )
 
-    assert "sample_size=3" in report.handicap.reason
-    assert "hit_rate=0.6667" in report.handicap.reason
+    assert "based on 3 samples at 66.67%" in report.handicap.reason
+    assert "sample_size=" not in report.handicap.reason
+    assert "hit_rate=" not in report.handicap.reason
     assert "no bet" in empty_report.handicap.reason
 
 

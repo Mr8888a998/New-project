@@ -237,7 +237,7 @@ def _market_recommendation(
     reason: str,
     confidence_rate: float | None = None,
 ) -> MarketRecommendation:
-    detailed_reason = f"{reason}; sample_size={sample_size}; hit_rate={hit_rate}"
+    detailed_reason = f"{reason}; {_sample_summary(sample_size, hit_rate)}"
     return MarketRecommendation(
         market=market,
         pick=pick,
@@ -251,7 +251,7 @@ def _market_recommendation(
 
 
 def _no_bet(market: str, sample_size: int, reason: str) -> MarketRecommendation:
-    detailed_reason = f"no bet: {reason}; sample_size={sample_size}; hit_rate=0.0"
+    detailed_reason = f"no bet: {reason}; {_sample_summary(sample_size, 0.0)}"
     return MarketRecommendation(
         market=market,
         pick=Pick.NO_BET,
@@ -260,6 +260,11 @@ def _no_bet(market: str, sample_size: int, reason: str) -> MarketRecommendation:
         hit_rate=0.0,
         reason=detailed_reason,
     )
+
+
+def _sample_summary(sample_size: int, hit_rate: float) -> str:
+    sample_word = "sample" if sample_size == 1 else "samples"
+    return f"based on {sample_size} {sample_word} at {hit_rate:.2%}"
 
 
 def _confidence(hit_rate: float, sample_size: int) -> str:
