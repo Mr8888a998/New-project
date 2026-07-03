@@ -44,7 +44,7 @@ def classify_movement(
 
     price_part = "price_missing"
     if open_price is not None and close_price is not None:
-        price_delta = close_price - open_price
+        price_delta = round(close_price - open_price, 4)
         if price_delta <= -0.03:
             price_part = "price_down"
         elif price_delta >= 0.03:
@@ -64,11 +64,9 @@ def build_match_features(
     total_rows = tuple(total_rows)
     one_x_two_rows = tuple(one_x_two_rows)
 
-    open_asian = _select_row(asian_rows, "is_opening")
-    close_asian = _select_row(asian_rows, "is_closing") or _last_row(asian_rows)
-    open_total = _select_row(total_rows, "is_opening")
-    close_total = _select_row(total_rows, "is_closing") or _last_row(total_rows)
-    close_1x2 = _select_row(one_x_two_rows, "is_closing") or _last_row(
+    open_asian, close_asian = _select_open_close_pair(asian_rows)
+    open_total, close_total = _select_open_close_pair(total_rows)
+    close_1x2 = _select_preferred_row(one_x_two_rows, "is_closing") or _last_row(
         one_x_two_rows
     )
 
@@ -117,7 +115,10 @@ def build_match_features(
         movement_patterns=patterns,
         line_depth_score=abs(close_handicap or 0.0),
         market_disagreement_score=_market_disagreement(
-            close_handicap, _float(close_1x2, "home_win_price")
+            close_handicap,
+            _float(close_1x2, "home_win_price"),
+            _float(close_1x2, "draw_price"),
+            _float(close_1x2, "away_win_price"),
         ),
         data_quality_score=_data_quality(
             open_asian, close_asian, open_total, close_total, close_1x2
@@ -125,8 +126,69 @@ def build_match_features(
     )
 
 
-def _select_row(rows: Sequence[Any], flag: str) -> Any | None:
-    return next((row for row in rows if _truthy(_row_get(row, flag))), None)
+def _select_open_close_pair(rows: Sequence[Any]) -> tuple[Any | None, Any | None]:
+    common_keys = {
+        key
+        for key in (_row_market_key(row) for row in rows)
+        if key is not None
+        and _has_flag(rows, key, "is_opening")
+        and _has_flag(rows, key, "is_closing")
+    }
+    if common_keys:
+        preferred_key = min(common_keys, key=_market_key_sort_key)
+        return (
+            _select_row_with_key(rows, "is_opening", preferred_key),
+            _select_row_with_key(rows, "is_closing", preferred_key),
+        )
+    return (
+        _select_preferred_row(rows, "is_opening"),
+        _select_preferred_row(rows, "is_closing") or _last_row(rows),
+    )
+
+
+def _select_preferred_row(rows: Sequence[Any], flag: str) -> Any | None:
+    candidates = [row for row in rows if _truthy(_row_get(row, flag))]
+    if not candidates:
+        return None
+    if not any(_row_market_key(row) is not None for row in candidates):
+        return candidates[0]
+    return min(candidates, key=lambda row: _market_key_sort_key(_row_market_key(row)))
+
+
+def _has_flag(rows: Sequence[Any], market_key: str, flag: str) -> bool:
+    return any(
+        _row_market_key(row) == market_key and _truthy(_row_get(row, flag))
+        for row in rows
+    )
+
+
+def _select_row_with_key(rows: Sequence[Any], flag: str, market_key: str) -> Any | None:
+    return next(
+        (
+            row
+            for row in rows
+            if _row_market_key(row) == market_key and _truthy(_row_get(row, flag))
+        ),
+        None,
+    )
+
+
+def _row_market_key(row: Any) -> str | None:
+    for key in ("bookmaker", "source"):
+        value = _row_get(row, key)
+        if value is not None and str(value).strip():
+            return str(value).strip().lower()
+    return None
+
+
+def _market_key_sort_key(market_key: str | None) -> tuple[int, str]:
+    if market_key is None:
+        return (3, "")
+    if market_key == "b365":
+        return (0, market_key)
+    if market_key in {"market-average", "web-average"}:
+        return (1, market_key)
+    return (2, market_key or "")
 
 
 def _last_row(rows: Sequence[Any]) -> Any | None:
@@ -166,18 +228,55 @@ def _delta(start: float | None, end: float | None) -> float | None:
     return round(end - start, 4)
 
 
-def _data_quality(*rows: Any | None) -> float:
-    if not rows:
-        return 0.0
+def _data_quality(
+    open_asian: Any | None,
+    close_asian: Any | None,
+    open_total: Any | None,
+    close_total: Any | None,
+    close_1x2: Any | None,
+) -> float:
+    rows = (open_asian, close_asian, open_total, close_total, close_1x2)
     present = sum(1 for row in rows if row is not None)
-    return round(present / len(rows), 2)
+    score = round(present / len(rows), 2)
+    for open_row, close_row in (
+        (open_asian, close_asian),
+        (open_total, close_total),
+    ):
+        if (open_row is None) != (close_row is None):
+            score = min(score, 0.49)
+    return round(score, 2)
 
 
 def _market_disagreement(
-    close_handicap: float | None, home_win_price: float | None
+    close_handicap: float | None,
+    home_win_price: float | None,
+    draw_price: float | None,
+    away_win_price: float | None,
 ) -> float:
-    if close_handicap is None or home_win_price is None:
+    if close_handicap is None or close_handicap == 0:
         return 0.5
-    strong_home = home_win_price <= 1.5
-    deep_home_line = close_handicap <= -2.0
-    return 0.2 if strong_home == deep_home_line else 0.8
+    probabilities = _normalized_implied_probabilities(
+        home_win_price, draw_price, away_win_price
+    )
+    if probabilities is None:
+        return 0.5
+
+    home_probability, _, away_probability = probabilities
+    favorite_probability = home_probability if close_handicap < 0 else away_probability
+    required_probability = min(0.7, 0.48 + abs(close_handicap) * 0.06)
+    return 0.2 if favorite_probability >= required_probability else 0.8
+
+
+def _normalized_implied_probabilities(
+    home_win_price: float | None,
+    draw_price: float | None,
+    away_win_price: float | None,
+) -> tuple[float, float, float] | None:
+    prices = (home_win_price, draw_price, away_win_price)
+    if any(price is None or price <= 0 for price in prices):
+        return None
+    inverse_prices = tuple(1 / price for price in prices)
+    total = sum(inverse_prices)
+    if total <= 0:
+        return None
+    return tuple(inverse_price / total for inverse_price in inverse_prices)
