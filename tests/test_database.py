@@ -7,7 +7,9 @@ from handicap_ai.models import (
     AsianHandicapLineRecord,
     MatchRecord,
     MatchStatus,
+    OneXTwoLineRecord,
     TeamRecord,
+    TotalsLineRecord,
 )
 
 
@@ -50,6 +52,52 @@ def _asian_line(
         line=line,
         home_price=home_price,
         away_price=away_price,
+        captured_at=captured_at,
+    )
+
+
+def _total_line(
+    *,
+    source_match_id: str = "fd:E0:2026-01-01:england-panama",
+    total: float = 2.5,
+    over_price: float | None = 2.05,
+    under_price: float | None = 1.80,
+    is_opening: bool = False,
+    is_closing: bool = True,
+    captured_at: datetime | None = None,
+) -> TotalsLineRecord:
+    return TotalsLineRecord(
+        source_match_id=source_match_id,
+        source="football-data",
+        bookmaker="market-average",
+        is_opening=is_opening,
+        is_closing=is_closing,
+        total=total,
+        over_price=over_price,
+        under_price=under_price,
+        captured_at=captured_at,
+    )
+
+
+def _one_x_two_line(
+    *,
+    source_match_id: str = "fd:E0:2026-01-01:england-panama",
+    home_win_price: float | None = 1.30,
+    draw_price: float | None = 5.00,
+    away_win_price: float | None = 9.00,
+    is_opening: bool = False,
+    is_closing: bool = True,
+    captured_at: datetime | None = None,
+) -> OneXTwoLineRecord:
+    return OneXTwoLineRecord(
+        source_match_id=source_match_id,
+        source="football-data",
+        bookmaker="B365",
+        is_opening=is_opening,
+        is_closing=is_closing,
+        home_win_price=home_win_price,
+        draw_price=draw_price,
+        away_win_price=away_win_price,
         captured_at=captured_at,
     )
 
@@ -119,6 +167,66 @@ def test_insert_asian_handicap_raises_when_match_missing(tmp_path):
 
     with pytest.raises(ValueError, match="source_match_id"):
         db.insert_asian_handicap(_asian_line(source_match_id="missing-match"))
+
+
+def test_insert_total_is_idempotent_and_updates_prices(tmp_path):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+    match = _match_record()
+    match_id = db.upsert_match(match)
+
+    db.insert_total(_total_line(source_match_id=match.source_match_id))
+    db.insert_total(
+        _total_line(
+            source_match_id=match.source_match_id,
+            over_price=2.11,
+            under_price=1.72,
+        )
+    )
+
+    lines = db.get_totals(match_id)
+    assert len(lines) == 1
+    assert lines[0]["over_price"] == 2.11
+    assert lines[0]["under_price"] == 1.72
+
+
+def test_insert_total_raises_when_match_missing(tmp_path):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+
+    with pytest.raises(ValueError, match="source_match_id"):
+        db.insert_total(_total_line(source_match_id="missing-match"))
+
+
+def test_insert_one_x_two_is_idempotent_and_updates_prices(tmp_path):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+    match = _match_record()
+    match_id = db.upsert_match(match)
+
+    db.insert_one_x_two(_one_x_two_line(source_match_id=match.source_match_id))
+    db.insert_one_x_two(
+        _one_x_two_line(
+            source_match_id=match.source_match_id,
+            home_win_price=1.44,
+            draw_price=4.80,
+            away_win_price=8.20,
+        )
+    )
+
+    lines = db.get_one_x_two(match_id)
+    assert len(lines) == 1
+    assert lines[0]["home_win_price"] == 1.44
+    assert lines[0]["draw_price"] == 4.80
+    assert lines[0]["away_win_price"] == 8.20
+
+
+def test_insert_one_x_two_raises_when_match_missing(tmp_path):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+
+    with pytest.raises(ValueError, match="source_match_id"):
+        db.insert_one_x_two(_one_x_two_line(source_match_id="missing-match"))
 
 
 def test_upsert_match_updates_existing_status_and_score(tmp_path):

@@ -5,7 +5,13 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Sequence
 
-from handicap_ai.models import AsianHandicapLineRecord, MatchRecord, TeamRecord
+from handicap_ai.models import (
+    AsianHandicapLineRecord,
+    MatchRecord,
+    OneXTwoLineRecord,
+    TeamRecord,
+    TotalsLineRecord,
+)
 from handicap_ai.names import normalize_team_name
 
 
@@ -56,7 +62,7 @@ CREATE TABLE IF NOT EXISTS totals_lines (
   total REAL NOT NULL,
   over_price REAL,
   under_price REAL,
-  captured_at TEXT,
+  captured_at TEXT NOT NULL DEFAULT '',
   FOREIGN KEY(match_id) REFERENCES matches(match_id)
 );
 
@@ -70,7 +76,7 @@ CREATE TABLE IF NOT EXISTS one_x_two_lines (
   home_win_price REAL,
   draw_price REAL,
   away_win_price REAL,
-  captured_at TEXT,
+  captured_at TEXT NOT NULL DEFAULT '',
   FOREIGN KEY(match_id) REFERENCES matches(match_id)
 );
 
@@ -88,6 +94,33 @@ ON asian_handicap_lines(
   is_opening,
   is_closing,
   line,
+  COALESCE(captured_at, '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_totals_lines_match
+ON totals_lines(match_id, is_opening, captured_at, id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_totals_lines_identity
+ON totals_lines(
+  match_id,
+  source,
+  bookmaker,
+  is_opening,
+  is_closing,
+  total,
+  COALESCE(captured_at, '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_one_x_two_lines_match
+ON one_x_two_lines(match_id, is_opening, captured_at, id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_one_x_two_lines_identity
+ON one_x_two_lines(
+  match_id,
+  source,
+  bookmaker,
+  is_opening,
+  is_closing,
   COALESCE(captured_at, '')
 );
 """
@@ -231,6 +264,95 @@ class Database:
             )
             conn.commit()
 
+    def insert_total(self, line: TotalsLineRecord) -> None:
+        captured_at = line.captured_at.isoformat() if line.captured_at else ""
+        with closing(self.connect()) as conn:
+            match = conn.execute(
+                "SELECT match_id FROM matches WHERE source_match_id = ?",
+                (line.source_match_id,),
+            ).fetchone()
+            if match is None:
+                raise ValueError(
+                    f"match not found for source_match_id {line.source_match_id!r}"
+                )
+
+            conn.execute(
+                """
+                INSERT INTO totals_lines (
+                  match_id,
+                  source,
+                  bookmaker,
+                  is_opening,
+                  is_closing,
+                  total,
+                  over_price,
+                  under_price,
+                  captured_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT DO UPDATE SET
+                  over_price = excluded.over_price,
+                  under_price = excluded.under_price
+                """,
+                (
+                    match["match_id"],
+                    line.source,
+                    line.bookmaker,
+                    int(line.is_opening),
+                    int(line.is_closing),
+                    line.total,
+                    line.over_price,
+                    line.under_price,
+                    captured_at,
+                ),
+            )
+            conn.commit()
+
+    def insert_one_x_two(self, line: OneXTwoLineRecord) -> None:
+        captured_at = line.captured_at.isoformat() if line.captured_at else ""
+        with closing(self.connect()) as conn:
+            match = conn.execute(
+                "SELECT match_id FROM matches WHERE source_match_id = ?",
+                (line.source_match_id,),
+            ).fetchone()
+            if match is None:
+                raise ValueError(
+                    f"match not found for source_match_id {line.source_match_id!r}"
+                )
+
+            conn.execute(
+                """
+                INSERT INTO one_x_two_lines (
+                  match_id,
+                  source,
+                  bookmaker,
+                  is_opening,
+                  is_closing,
+                  home_win_price,
+                  draw_price,
+                  away_win_price,
+                  captured_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT DO UPDATE SET
+                  home_win_price = excluded.home_win_price,
+                  draw_price = excluded.draw_price,
+                  away_win_price = excluded.away_win_price
+                """,
+                (
+                    match["match_id"],
+                    line.source,
+                    line.bookmaker,
+                    int(line.is_opening),
+                    int(line.is_closing),
+                    line.home_win_price,
+                    line.draw_price,
+                    line.away_win_price,
+                    captured_at,
+                ),
+            )
+            conn.commit()
+
     def find_matches_by_names(self, home_team: str, away_team: str) -> list[sqlite3.Row]:
         return self.execute(
             """
@@ -247,6 +369,28 @@ class Database:
             """
             SELECT *
             FROM asian_handicap_lines
+            WHERE match_id = ?
+            ORDER BY is_opening DESC, COALESCE(captured_at, '') ASC, id ASC
+            """,
+            (match_id,),
+        )
+
+    def get_totals(self, match_id: int) -> list[sqlite3.Row]:
+        return self.execute(
+            """
+            SELECT *
+            FROM totals_lines
+            WHERE match_id = ?
+            ORDER BY is_opening DESC, COALESCE(captured_at, '') ASC, id ASC
+            """,
+            (match_id,),
+        )
+
+    def get_one_x_two(self, match_id: int) -> list[sqlite3.Row]:
+        return self.execute(
+            """
+            SELECT *
+            FROM one_x_two_lines
             WHERE match_id = ?
             ORDER BY is_opening DESC, COALESCE(captured_at, '') ASC, id ASC
             """,
