@@ -29,7 +29,7 @@ def find_similar_matches(
         SimilarityResult(
             match_id=candidate.match_id,
             distance=_distance(target, candidate.features),
-            labels=candidate.labels,
+            labels=dict(candidate.labels),
         )
         for candidate in candidates
     ]
@@ -56,4 +56,6 @@ def _distance(left: MatchFeatures, right: MatchFeatures) -> float:
             total += weight
         else:
             total += abs(left_value - right_value) * weight
+    candidate_quality = min(max(right.data_quality_score, 0.0), 1.0)
+    total += (1.0 - candidate_quality) * 5.0
     return round(total, 4)

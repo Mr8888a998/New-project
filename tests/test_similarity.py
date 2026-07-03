@@ -2,7 +2,7 @@ from handicap_ai.features import MatchFeatures
 from handicap_ai.similarity import SimilarityCandidate, find_similar_matches
 
 
-def _features(open_h, close_h, open_t, close_t):
+def _features(open_h, close_h, open_t, close_t, data_quality_score=1.0):
     return MatchFeatures(
         open_handicap=open_h,
         close_handicap=close_h,
@@ -20,7 +20,7 @@ def _features(open_h, close_h, open_t, close_t):
         movement_patterns=("line_up_price_down", "line_up_price_stable"),
         line_depth_score=abs(close_h or 0),
         market_disagreement_score=0.2,
-        data_quality_score=1.0,
+        data_quality_score=data_quality_score,
     )
 
 
@@ -64,3 +64,40 @@ def test_find_similar_matches_penalizes_missing_values_and_limits_results():
 
     assert len(result) == 1
     assert result[0].match_id == 2
+
+
+def test_find_similar_matches_ranks_low_quality_exact_below_high_quality_near():
+    target = _features(-1.75, -2.25, 3.0, 3.25)
+    candidates = [
+        SimilarityCandidate(
+            match_id=1,
+            features=_features(-1.75, -2.25, 3.0, 3.25, data_quality_score=0.0),
+            labels={"handicap": "low_quality_exact"},
+        ),
+        SimilarityCandidate(
+            match_id=2,
+            features=_features(-1.75, -2.0, 3.0, 3.25, data_quality_score=1.0),
+            labels={"handicap": "high_quality_near"},
+        ),
+    ]
+
+    result = find_similar_matches(target, candidates)
+
+    assert [match.match_id for match in result] == [2, 1]
+
+
+def test_find_similar_matches_copies_result_labels():
+    target = _features(-1.75, -2.25, 3.0, 3.25)
+    labels = {"handicap": "away_cover"}
+    candidates = [
+        SimilarityCandidate(
+            match_id=1,
+            features=_features(-1.75, -2.25, 3.0, 3.25),
+            labels=labels,
+        ),
+    ]
+
+    result = find_similar_matches(target, candidates)
+    labels["handicap"] = "home_cover"
+
+    assert result[0].labels == {"handicap": "away_cover"}
