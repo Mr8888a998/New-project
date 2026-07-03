@@ -189,6 +189,40 @@ def test_build_match_features_pairs_same_bookmaker_only_with_same_source():
     assert features.home_water_delta == -0.04
 
 
+def test_build_match_features_does_not_create_movement_without_common_market_key():
+    features = build_match_features(
+        asian_rows=[
+            {
+                "source": "feed-a",
+                "bookmaker": "B365",
+                "is_opening": 1,
+                "is_closing": 0,
+                "line": -1.75,
+                "home_price": 1.95,
+                "away_price": 1.90,
+            },
+            {
+                "source": "feed-b",
+                "bookmaker": "B365",
+                "is_opening": 0,
+                "is_closing": 1,
+                "line": -2.25,
+                "home_price": 1.88,
+                "away_price": 2.02,
+            },
+        ],
+        total_rows=[],
+        one_x_two_rows=[],
+    )
+
+    assert features.open_handicap == -1.75
+    assert features.close_handicap is None
+    assert features.handicap_delta is None
+    assert features.home_water_delta is None
+    assert "line_missing" in features.movement_patterns
+    assert features.data_quality_score < 0.5
+
+
 def test_build_match_features_uses_sqlite_rows_and_last_row_fallback():
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row

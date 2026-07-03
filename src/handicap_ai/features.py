@@ -142,10 +142,35 @@ def _select_open_close_pair(rows: Sequence[Any]) -> tuple[Any | None, Any | None
             _select_row_with_key(rows, "is_opening", preferred_key),
             _select_row_with_key(rows, "is_closing", preferred_key),
         )
+    if any(_row_market_key(row) is not None for row in rows):
+        return _select_unpaired_row(rows)
     return (
         _select_preferred_row(rows, "is_opening"),
         _select_preferred_row(rows, "is_closing") or _last_row(rows),
     )
+
+
+def _select_unpaired_row(rows: Sequence[Any]) -> tuple[Any | None, Any | None]:
+    candidates = [
+        (index, row)
+        for index, row in enumerate(rows)
+        if _truthy(_row_get(row, "is_opening"))
+        or _truthy(_row_get(row, "is_closing"))
+    ]
+    if not candidates:
+        return (None, _last_row(rows))
+
+    _, row = min(
+        candidates,
+        key=lambda item: (
+            _market_key_sort_key(_row_market_key(item[1])),
+            0 if _truthy(_row_get(item[1], "is_opening")) else 1,
+            item[0],
+        ),
+    )
+    if _truthy(_row_get(row, "is_opening")):
+        return (row, None)
+    return (None, row)
 
 
 def _select_preferred_row(rows: Sequence[Any], flag: str) -> Any | None:
