@@ -11,10 +11,12 @@ from handicap_ai.similarity import SimilarityResult
 
 @dataclass(frozen=True)
 class MarketRecommendation:
+    market: str
     pick: Pick
-    hit_rate: float
-    sample_size: int
     confidence: str
+    sample_size: int
+    hit_rate: float
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -53,21 +55,31 @@ def _recommend_handicap(
     away_rate = _label_rate(similar, "handicap", {"away_cover", "home_half_loss"})
 
     if features.data_quality_score < 0.5:
-        return _market_recommendation(
-            Pick.NO_BET, max(home_rate, away_rate), sample_size
-        )
+        return _no_bet("handicap", sample_size, "data quality below handicap cutoff")
 
     if (
         features.close_handicap is not None
         and features.close_handicap <= -2.0
         and away_rate >= 0.5
     ):
-        return _market_recommendation(Pick.AWAY, away_rate, sample_size)
+        return _market_recommendation(
+            "handicap",
+            Pick.AWAY,
+            away_rate,
+            sample_size,
+            "deep home favorite with similar away-cover support",
+        )
 
     if home_rate > away_rate:
-        return _market_recommendation(Pick.HOME, home_rate, sample_size)
+        return _market_recommendation(
+            "handicap",
+            Pick.HOME,
+            home_rate,
+            sample_size,
+            "similar matches favor home cover",
+        )
 
-    return _market_recommendation(Pick.NO_BET, max(home_rate, away_rate), sample_size)
+    return _no_bet("handicap", sample_size, "no clear handicap edge")
 
 
 def _recommend_total(
@@ -79,21 +91,31 @@ def _recommend_total(
     under_rate = _label_rate(similar, "total", {"under", "under_half_win"})
 
     if features.data_quality_score < 0.5:
-        return _market_recommendation(
-            Pick.NO_BET, max(over_rate, under_rate), sample_size
-        )
+        return _no_bet("total", sample_size, "data quality below total cutoff")
 
     if (
         features.total_delta is not None
         and features.total_delta > 0
         and under_rate >= over_rate
     ):
-        return _market_recommendation(Pick.UNDER, under_rate, sample_size)
+        return _market_recommendation(
+            "total",
+            Pick.UNDER,
+            under_rate,
+            sample_size,
+            "total moved up while similar matches lean under",
+        )
 
     if over_rate > under_rate:
-        return _market_recommendation(Pick.OVER, over_rate, sample_size)
+        return _market_recommendation(
+            "total",
+            Pick.OVER,
+            over_rate,
+            sample_size,
+            "similar matches favor over",
+        )
 
-    return _market_recommendation(Pick.NO_BET, max(over_rate, under_rate), sample_size)
+    return _no_bet("total", sample_size, "no clear total edge")
 
 
 def _recommend_one_x_two(
@@ -111,13 +133,27 @@ def _recommend_one_x_two(
         features.closing_home_win_price is not None
         and features.closing_home_win_price <= 1.55
     ):
-        return _market_recommendation(Pick.HOME, rates[Pick.HOME], sample_size)
+        hit_rate = rates[Pick.HOME]
+        return _market_recommendation(
+            "1x2",
+            Pick.HOME,
+            hit_rate,
+            sample_size,
+            "short home win price indicates strong favorite",
+            confidence_rate=max(hit_rate, 0.6),
+        )
 
     best_pick, best_rate = max(rates.items(), key=lambda item: item[1])
     if best_rate >= 0.45:
-        return _market_recommendation(best_pick, best_rate, sample_size)
+        return _market_recommendation(
+            "1x2",
+            best_pick,
+            best_rate,
+            sample_size,
+            "similar matches support the 1x2 outcome",
+        )
 
-    return _market_recommendation(Pick.NO_BET, best_rate, sample_size)
+    return _no_bet("1x2", sample_size, "no 1x2 outcome reaches support cutoff")
 
 
 def _label_rate(
@@ -145,15 +181,33 @@ def _label_value(label: object | None) -> str | None:
 
 
 def _market_recommendation(
+    market: str,
     pick: Pick,
     hit_rate: float,
     sample_size: int,
+    reason: str,
+    confidence_rate: float | None = None,
 ) -> MarketRecommendation:
     return MarketRecommendation(
+        market=market,
         pick=pick,
-        hit_rate=hit_rate,
+        confidence=_confidence(
+            hit_rate if confidence_rate is None else confidence_rate, sample_size
+        ),
         sample_size=sample_size,
-        confidence=_confidence(hit_rate, sample_size),
+        hit_rate=hit_rate,
+        reason=reason,
+    )
+
+
+def _no_bet(market: str, sample_size: int, reason: str) -> MarketRecommendation:
+    return MarketRecommendation(
+        market=market,
+        pick=Pick.NO_BET,
+        confidence="low",
+        sample_size=sample_size,
+        hit_rate=0.0,
+        reason=reason,
     )
 
 
@@ -170,20 +224,13 @@ def _confidence(hit_rate: float, sample_size: int) -> str:
 def _risk_tags(features: MatchFeatures, sample_size: int) -> tuple[str, ...]:
     tags: list[str] = []
 
-    if (
-        features.line_depth_score >= 2.0
-        or features.close_handicap is not None
-        and features.close_handicap <= -2.0
-    ):
+    if features.close_handicap is not None and abs(features.close_handicap) >= 2.0:
         tags.append("line_too_deep")
-    if (
-        features.closing_home_win_price is not None
-        and features.closing_home_win_price <= 1.55
-    ):
+    if any(pattern.startswith("line_up") for pattern in features.movement_patterns):
         tags.append("favorite_heat")
-    if features.market_disagreement_score >= 0.5:
+    if features.market_disagreement_score >= 0.7:
         tags.append("market_disagreement")
-    if features.data_quality_score < 0.5:
+    if features.data_quality_score < 0.7:
         tags.append("low_data_quality")
     if sample_size < 5:
         tags.append("small_sample")
