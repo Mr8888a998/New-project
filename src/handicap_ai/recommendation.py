@@ -51,26 +51,34 @@ def _recommend_handicap(
     similar: Sequence[SimilarityResult],
     sample_size: int,
 ) -> MarketRecommendation:
-    home_rate = _label_rate(similar, "handicap", {"home_cover", "home_half_win"})
-    away_rate = _label_rate(similar, "handicap", {"away_cover", "home_half_loss"})
+    if sample_size == 0:
+        return _no_bet("handicap", sample_size, "no similar matches available")
 
     if features.data_quality_score < 0.5:
         return _no_bet("handicap", sample_size, "data quality below handicap cutoff")
 
-    if (
-        features.close_handicap is not None
-        and features.close_handicap <= -2.0
-        and away_rate >= 0.5
-    ):
+    home_hits = _label_hits(similar, "handicap", {"home_cover", "home_half_win"})
+    away_hits = _label_hits(similar, "handicap", {"away_cover", "home_half_loss"})
+    home_rate = _label_rate(similar, "handicap", {"home_cover", "home_half_win"})
+    away_rate = _label_rate(similar, "handicap", {"away_cover", "home_half_loss"})
+
+    if away_hits > 0 and away_rate > home_rate:
+        reason = "similar matches favor away cover"
+        if (
+            features.close_handicap is not None
+            and features.close_handicap <= -2.0
+            and away_rate >= 0.5
+        ):
+            reason = "deep home favorite with similar away-cover support"
         return _market_recommendation(
             "handicap",
             Pick.AWAY,
             away_rate,
             sample_size,
-            "deep home favorite with similar away-cover support",
+            reason,
         )
 
-    if home_rate > away_rate:
+    if home_hits > 0 and home_rate > away_rate:
         return _market_recommendation(
             "handicap",
             Pick.HOME,
@@ -87,16 +95,22 @@ def _recommend_total(
     similar: Sequence[SimilarityResult],
     sample_size: int,
 ) -> MarketRecommendation:
-    over_rate = _label_rate(similar, "total", {"over", "over_half_win"})
-    under_rate = _label_rate(similar, "total", {"under", "under_half_win"})
+    if sample_size == 0:
+        return _no_bet("total", sample_size, "no similar matches available")
 
     if features.data_quality_score < 0.5:
         return _no_bet("total", sample_size, "data quality below total cutoff")
+
+    over_hits = _label_hits(similar, "total", {"over", "over_half_win"})
+    under_hits = _label_hits(similar, "total", {"under", "under_half_win"})
+    over_rate = _label_rate(similar, "total", {"over", "over_half_win"})
+    under_rate = _label_rate(similar, "total", {"under", "under_half_win"})
 
     if (
         features.total_delta is not None
         and features.total_delta > 0
         and under_rate >= over_rate
+        and under_hits > 0
     ):
         return _market_recommendation(
             "total",
@@ -106,13 +120,22 @@ def _recommend_total(
             "total moved up while similar matches lean under",
         )
 
-    if over_rate > under_rate:
+    if over_hits > 0 and over_rate > under_rate:
         return _market_recommendation(
             "total",
             Pick.OVER,
             over_rate,
             sample_size,
             "similar matches favor over",
+        )
+
+    if under_hits > 0 and under_rate > over_rate:
+        return _market_recommendation(
+            "total",
+            Pick.UNDER,
+            under_rate,
+            sample_size,
+            "similar matches favor under",
         )
 
     return _no_bet("total", sample_size, "no clear total edge")
@@ -123,6 +146,17 @@ def _recommend_one_x_two(
     similar: Sequence[SimilarityResult],
     sample_size: int,
 ) -> MarketRecommendation:
+    if sample_size == 0:
+        return _no_bet("1x2", sample_size, "no similar matches available")
+
+    if features.data_quality_score < 0.5:
+        return _no_bet("1x2", sample_size, "data quality below 1x2 cutoff")
+
+    hits = {
+        Pick.HOME: _label_hits(similar, "1x2", {"home_win"}),
+        Pick.DRAW: _label_hits(similar, "1x2", {"draw"}),
+        Pick.AWAY: _label_hits(similar, "1x2", {"away_win"}),
+    }
     rates = {
         Pick.HOME: _label_rate(similar, "1x2", {"home_win"}),
         Pick.DRAW: _label_rate(similar, "1x2", {"draw"}),
@@ -144,7 +178,7 @@ def _recommend_one_x_two(
         )
 
     best_pick, best_rate = max(rates.items(), key=lambda item: item[1])
-    if best_rate >= 0.45:
+    if hits[best_pick] > 0 and best_rate >= 0.45 and _is_unique_best(best_pick, rates):
         return _market_recommendation(
             "1x2",
             best_pick,
@@ -164,12 +198,27 @@ def _label_rate(
     if not similar:
         return 0.0
 
-    hits = sum(
+    hits = _label_hits(similar, market, winning_labels)
+    return round(hits / len(similar), 4)
+
+
+def _label_hits(
+    similar: Sequence[SimilarityResult],
+    market: str,
+    winning_labels: set[str],
+) -> int:
+    return sum(
         1
         for result in similar
         if _label_value(result.labels.get(market)) in winning_labels
     )
-    return round(hits / len(similar), 4)
+
+
+def _is_unique_best(best_pick: Pick, rates: dict[Pick, float]) -> bool:
+    best_rate = rates[best_pick]
+    return all(
+        best_rate > rate for pick, rate in rates.items() if pick is not best_pick
+    )
 
 
 def _label_value(label: object | None) -> str | None:
@@ -188,6 +237,7 @@ def _market_recommendation(
     reason: str,
     confidence_rate: float | None = None,
 ) -> MarketRecommendation:
+    detailed_reason = f"{reason}; sample_size={sample_size}; hit_rate={hit_rate}"
     return MarketRecommendation(
         market=market,
         pick=pick,
@@ -196,18 +246,19 @@ def _market_recommendation(
         ),
         sample_size=sample_size,
         hit_rate=hit_rate,
-        reason=reason,
+        reason=detailed_reason,
     )
 
 
 def _no_bet(market: str, sample_size: int, reason: str) -> MarketRecommendation:
+    detailed_reason = f"no bet: {reason}; sample_size={sample_size}; hit_rate=0.0"
     return MarketRecommendation(
         market=market,
         pick=Pick.NO_BET,
         confidence="low",
         sample_size=sample_size,
         hit_rate=0.0,
-        reason=reason,
+        reason=detailed_reason,
     )
 
 
@@ -226,7 +277,8 @@ def _risk_tags(features: MatchFeatures, sample_size: int) -> tuple[str, ...]:
 
     if features.close_handicap is not None and abs(features.close_handicap) >= 2.0:
         tags.append("line_too_deep")
-    if any(pattern.startswith("line_up") for pattern in features.movement_patterns):
+    handicap_pattern = features.movement_patterns[0] if features.movement_patterns else ""
+    if handicap_pattern.startswith("line_up"):
         tags.append("favorite_heat")
     if features.market_disagreement_score >= 0.7:
         tags.append("market_disagreement")
