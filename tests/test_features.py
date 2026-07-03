@@ -148,6 +148,47 @@ def test_build_match_features_prefers_same_b365_opening_closing_pair():
     assert features.home_water_delta == -0.07
 
 
+def test_build_match_features_pairs_same_bookmaker_only_with_same_source():
+    features = build_match_features(
+        asian_rows=[
+            {
+                "source": "feed-a",
+                "bookmaker": "B365",
+                "is_opening": 1,
+                "is_closing": 0,
+                "line": -1.75,
+                "home_price": 1.95,
+                "away_price": 1.90,
+            },
+            {
+                "source": "feed-b",
+                "bookmaker": "B365",
+                "is_opening": 0,
+                "is_closing": 1,
+                "line": -2.25,
+                "home_price": 1.88,
+                "away_price": 2.02,
+            },
+            {
+                "source": "feed-a",
+                "bookmaker": "B365",
+                "is_opening": 0,
+                "is_closing": 1,
+                "line": -2.00,
+                "home_price": 1.91,
+                "away_price": 1.99,
+            },
+        ],
+        total_rows=[],
+        one_x_two_rows=[],
+    )
+
+    assert features.open_handicap == -1.75
+    assert features.close_handicap == -2.00
+    assert features.handicap_delta == -0.25
+    assert features.home_water_delta == -0.04
+
+
 def test_build_match_features_uses_sqlite_rows_and_last_row_fallback():
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row

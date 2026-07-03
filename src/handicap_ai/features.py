@@ -4,6 +4,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+MarketKey = tuple[str | None, str | None]
+
 
 @dataclass(frozen=True)
 class MatchFeatures:
@@ -155,14 +157,16 @@ def _select_preferred_row(rows: Sequence[Any], flag: str) -> Any | None:
     return min(candidates, key=lambda row: _market_key_sort_key(_row_market_key(row)))
 
 
-def _has_flag(rows: Sequence[Any], market_key: str, flag: str) -> bool:
+def _has_flag(rows: Sequence[Any], market_key: MarketKey, flag: str) -> bool:
     return any(
         _row_market_key(row) == market_key and _truthy(_row_get(row, flag))
         for row in rows
     )
 
 
-def _select_row_with_key(rows: Sequence[Any], flag: str, market_key: str) -> Any | None:
+def _select_row_with_key(
+    rows: Sequence[Any], flag: str, market_key: MarketKey
+) -> Any | None:
     return next(
         (
             row
@@ -173,22 +177,33 @@ def _select_row_with_key(rows: Sequence[Any], flag: str, market_key: str) -> Any
     )
 
 
-def _row_market_key(row: Any) -> str | None:
-    for key in ("bookmaker", "source"):
-        value = _row_get(row, key)
-        if value is not None and str(value).strip():
-            return str(value).strip().lower()
-    return None
+def _row_market_key(row: Any) -> MarketKey | None:
+    source = _normalized_identifier(_row_get(row, "source"))
+    bookmaker = _normalized_identifier(_row_get(row, "bookmaker"))
+    if source is None and bookmaker is None:
+        return None
+    return (source, bookmaker)
 
 
-def _market_key_sort_key(market_key: str | None) -> tuple[int, str]:
+def _normalized_identifier(value: object | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    return normalized or None
+
+
+def _market_key_sort_key(market_key: MarketKey | None) -> tuple[int, str, str]:
     if market_key is None:
-        return (3, "")
-    if market_key == "b365":
-        return (0, market_key)
-    if market_key in {"market-average", "web-average"}:
-        return (1, market_key)
-    return (2, market_key or "")
+        return (3, "", "")
+    source, bookmaker = market_key
+    market_name = bookmaker or source or ""
+    if bookmaker == "b365":
+        priority = 0
+    elif bookmaker in {"market-average", "web-average"}:
+        priority = 1
+    else:
+        priority = 2
+    return (priority, market_name, source or "")
 
 
 def _last_row(rows: Sequence[Any]) -> Any | None:
