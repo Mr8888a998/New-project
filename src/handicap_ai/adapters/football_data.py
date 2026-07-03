@@ -16,6 +16,9 @@ from handicap_ai.models import (
 from handicap_ai.names import normalize_team_name
 
 
+REQUIRED_FIELDS = ("Div", "Date", "HomeTeam", "AwayTeam")
+
+
 class FootballDataCsvAdapter:
     source_name = "football-data"
 
@@ -26,20 +29,38 @@ class FootballDataCsvAdapter:
     def load(self) -> list[NormalizedMatchBundle]:
         with self.csv_path.open(newline="", encoding="utf-8-sig") as handle:
             reader = csv.DictReader(handle)
-            return [self._row_to_bundle(row) for row in reader]
+            self._validate_headers(reader.fieldnames)
+            return [
+                self._row_to_bundle(row, row_number)
+                for row_number, row in enumerate(reader, start=2)
+            ]
 
-    def _row_to_bundle(self, row: dict[str, str]) -> NormalizedMatchBundle:
-        home = row["HomeTeam"].strip()
-        away = row["AwayTeam"].strip()
-        kickoff_time = _parse_date(row.get("Date", ""))
-        source_match_id = self._source_match_id(row, home, away, kickoff_time)
+    def _validate_headers(self, fieldnames: list[str] | None) -> None:
+        headers = set(fieldnames or [])
+        missing = [field for field in REQUIRED_FIELDS if field not in headers]
+        if missing:
+            names = ", ".join(missing)
+            raise ValueError(
+                f"football-data CSV missing required header(s): {names}"
+            )
+
+    def _row_to_bundle(
+        self,
+        row: dict[str, str],
+        row_number: int,
+    ) -> NormalizedMatchBundle:
+        competition = self._required_value(row, "Div", row_number)
+        home = self._required_value(row, "HomeTeam", row_number)
+        away = self._required_value(row, "AwayTeam", row_number)
+        kickoff_time = self._required_date(row, row_number)
+        source_match_id = self._source_match_id(competition, home, away, kickoff_time)
         home_score = _int_or_none(row.get("FTHG"))
         away_score = _int_or_none(row.get("FTAG"))
         match = MatchRecord(
             source_match_id=source_match_id,
             home_team=home,
             away_team=away,
-            competition=_clean_value(row.get("Div")) or "unknown",
+            competition=competition,
             season=self.season,
             kickoff_time=kickoff_time,
             status=(
@@ -58,12 +79,40 @@ class FootballDataCsvAdapter:
             one_x_two=tuple(self._one_x_two(source_match_id, row)),
         )
 
+    def _required_value(
+        self,
+        row: dict[str, str],
+        field_name: str,
+        row_number: int,
+    ) -> str:
+        value = _clean_value(row.get(field_name))
+        if value is None:
+            raise ValueError(
+                f"football-data row {row_number}: required field "
+                f"{field_name} is blank"
+            )
+        return value
+
+    def _required_date(
+        self,
+        row: dict[str, str],
+        row_number: int,
+    ) -> datetime:
+        value = self._required_value(row, "Date", row_number)
+        parsed = _parse_date(value)
+        if parsed is None:
+            raise ValueError(
+                f"football-data row {row_number}: Date {value!r} does not "
+                "match supported formats %d/%m/%y, %d/%m/%Y, or %Y-%m-%d"
+            )
+        return parsed
+
     def _asian_handicaps(
         self,
         source_match_id: str,
         row: dict[str, str],
     ) -> list[AsianHandicapLineRecord]:
-        line = _float_or_none(row.get("AHh"))
+        line = _float_or_none(_first_value(row, ("AHCh", "AHh")))
         if line is None:
             return []
         return [
@@ -74,8 +123,12 @@ class FootballDataCsvAdapter:
                 is_opening=False,
                 is_closing=True,
                 line=line,
-                home_price=_float_or_none(row.get("B365AHH")),
-                away_price=_float_or_none(row.get("B365AHA")),
+                home_price=_float_or_none(
+                    _first_value(row, ("B365CAHH", "B365AHH"))
+                ),
+                away_price=_float_or_none(
+                    _first_value(row, ("B365CAHA", "B365AHA"))
+                ),
             )
         ]
 
@@ -84,8 +137,8 @@ class FootballDataCsvAdapter:
         source_match_id: str,
         row: dict[str, str],
     ) -> list[TotalsLineRecord]:
-        over_price = _float_or_none(row.get("BbAv>2.5"))
-        under_price = _float_or_none(row.get("BbAv<2.5"))
+        over_price = _float_or_none(_first_value(row, ("Avg>2.5", "BbAv>2.5")))
+        under_price = _float_or_none(_first_value(row, ("Avg<2.5", "BbAv<2.5")))
         if over_price is None and under_price is None:
             return []
         return [
@@ -106,9 +159,9 @@ class FootballDataCsvAdapter:
         source_match_id: str,
         row: dict[str, str],
     ) -> list[OneXTwoLineRecord]:
-        home_price = _float_or_none(row.get("B365H"))
-        draw_price = _float_or_none(row.get("B365D"))
-        away_price = _float_or_none(row.get("B365A"))
+        home_price = _float_or_none(_first_value(row, ("B365CH", "B365H")))
+        draw_price = _float_or_none(_first_value(row, ("B365CD", "B365D")))
+        away_price = _float_or_none(_first_value(row, ("B365CA", "B365A")))
         if home_price is None and draw_price is None and away_price is None:
             return []
         return [
@@ -126,17 +179,13 @@ class FootballDataCsvAdapter:
 
     def _source_match_id(
         self,
-        row: dict[str, str],
+        competition: str,
         home: str,
         away: str,
-        kickoff_time: datetime | None,
+        kickoff_time: datetime,
     ) -> str:
-        div = _slug(_clean_value(row.get("Div")) or "unknown")
-        date_part = (
-            kickoff_time.date().isoformat()
-            if kickoff_time is not None
-            else _slug(_clean_value(row.get("Date")) or "unknown")
-        )
+        div = _slug(competition)
+        date_part = kickoff_time.date().isoformat()
         home_part = _slug(home)
         away_part = _slug(away)
         return (
@@ -169,6 +218,14 @@ def _int_or_none(value: str | None) -> int | None:
     if cleaned is None:
         return None
     return int(cleaned)
+
+
+def _first_value(row: dict[str, str], field_names: tuple[str, ...]) -> str | None:
+    for field_name in field_names:
+        value = _clean_value(row.get(field_name))
+        if value is not None:
+            return value
+    return None
 
 
 def _clean_value(value: str | None) -> str | None:
