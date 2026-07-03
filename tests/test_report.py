@@ -35,13 +35,32 @@ def test_render_text_report_contains_required_markets():
 
     text = render_text_report("England", "Panama", report)
 
-    assert "Handicap pick: away" in text
-    assert "Total pick: under" in text
-    assert "1X2 pick: home" in text
-    assert "line_too_deep" in text
+    assert text.splitlines() == [
+        "Match: England vs Panama",
+        "",
+        "Handicap pick: away",
+        "Total pick: under",
+        "1X2 pick: home",
+        "",
+        "Confidence",
+        "- handicap: medium (12 samples, hit rate 58.00%)",
+        "- total: medium (12 samples, hit rate 58.00%)",
+        "- 1x2: high (12 samples, hit rate 75.00%)",
+        "",
+        "Data quality: 0.85",
+        "",
+        "Reasons",
+        "- handicap: Comparable samples favor the underdog side.",
+        "- total: Total moved up without strong over support.",
+        "- 1x2: 1X2 still favors home win.",
+        "",
+        "Risk tags",
+        "- line_too_deep",
+        "- favorite_heat",
+    ]
 
 
-def test_render_text_report_outputs_none_when_no_risk_tags():
+def test_render_text_report_outputs_no_bet_and_none_when_no_risk_tags():
     report = RecommendationReport(
         handicap=MarketRecommendation(
             "handicap",
@@ -73,5 +92,12 @@ def test_render_text_report_outputs_none_when_no_risk_tags():
 
     text = render_text_report("England", "Panama", report)
 
-    assert "Risk tags" in text
-    assert "- none" in text
+    assert "Handicap pick: no bet" in text
+    assert "Total pick: no bet" in text
+    assert "1X2 pick: no bet" in text
+    assert "- handicap: low (0 samples, hit rate 0.00%)" in text
+    assert "Data quality: 0.25" in text
+    assert text.splitlines()[-2:] == [
+        "Risk tags",
+        "- none",
+    ]

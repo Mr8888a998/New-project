@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from handicap_ai.models import Pick
 from handicap_ai.recommendation import MarketRecommendation, RecommendationReport
 
 
@@ -10,9 +11,9 @@ def render_text_report(home: str, away: str, report: RecommendationReport) -> st
     lines = [
         f"Match: {home} vs {away}",
         "",
-        f"Handicap pick: {report.handicap.pick.value}",
-        f"Total pick: {report.total.pick.value}",
-        f"1X2 pick: {report.one_x_two.pick.value}",
+        f"Handicap pick: {_pick_label(report.handicap.pick)}",
+        f"Total pick: {_pick_label(report.total.pick)}",
+        f"1X2 pick: {_pick_label(report.one_x_two.pick)}",
         "",
         "Confidence",
         *[_confidence_line(recommendation) for recommendation in recommendations],
@@ -32,9 +33,16 @@ def render_text_report(home: str, away: str, report: RecommendationReport) -> st
     return "\n".join(lines)
 
 
+def _pick_label(pick: Pick) -> str:
+    if pick is Pick.NO_BET:
+        return "no bet"
+    return pick.value
+
+
 def _confidence_line(recommendation: MarketRecommendation) -> str:
+    sample_word = "sample" if recommendation.sample_size == 1 else "samples"
     return (
         f"- {recommendation.market}: {recommendation.confidence} "
-        f"(sample_size={recommendation.sample_size}, "
-        f"hit_rate={recommendation.hit_rate:.2f})"
+        f"({recommendation.sample_size} {sample_word}, "
+        f"hit rate {recommendation.hit_rate:.2%})"
     )
