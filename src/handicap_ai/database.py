@@ -12,7 +12,7 @@ from handicap_ai.names import normalize_team_name
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS teams (
   team_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  canonical_name TEXT NOT NULL UNIQUE,
+  canonical_name TEXT NOT NULL,
   normalized_name TEXT NOT NULL UNIQUE,
   country TEXT
 );
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS asian_handicap_lines (
   line REAL NOT NULL,
   home_price REAL,
   away_price REAL,
-  captured_at TEXT,
+  captured_at TEXT NOT NULL DEFAULT '',
   FOREIGN KEY(match_id) REFERENCES matches(match_id)
 );
 
@@ -78,7 +78,18 @@ CREATE INDEX IF NOT EXISTS idx_matches_normalized_names
 ON matches(home_normalized, away_normalized, kickoff_time);
 
 CREATE INDEX IF NOT EXISTS idx_asian_handicap_lines_match
-ON asian_handicap_lines(match_id, is_opening, id);
+ON asian_handicap_lines(match_id, is_opening, captured_at, id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_asian_handicap_lines_identity
+ON asian_handicap_lines(
+  match_id,
+  source,
+  bookmaker,
+  is_opening,
+  is_closing,
+  line,
+  COALESCE(captured_at, '')
+);
 """
 
 
@@ -112,9 +123,9 @@ class Database:
                 """
                 INSERT INTO teams (canonical_name, normalized_name, country)
                 VALUES (?, ?, ?)
-                ON CONFLICT(canonical_name) DO UPDATE SET
-                  normalized_name = excluded.normalized_name,
-                  country = excluded.country
+                ON CONFLICT(normalized_name) DO UPDATE SET
+                  canonical_name = excluded.canonical_name,
+                  country = COALESCE(excluded.country, teams.country)
                 """,
                 (
                     team.canonical_name,
@@ -177,7 +188,7 @@ class Database:
             return int(row["match_id"])
 
     def insert_asian_handicap(self, line: AsianHandicapLineRecord) -> None:
-        captured_at = line.captured_at.isoformat() if line.captured_at else None
+        captured_at = line.captured_at.isoformat() if line.captured_at else ""
         with closing(self.connect()) as conn:
             match = conn.execute(
                 "SELECT match_id FROM matches WHERE source_match_id = ?",
@@ -202,6 +213,9 @@ class Database:
                   captured_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT DO UPDATE SET
+                  home_price = excluded.home_price,
+                  away_price = excluded.away_price
                 """,
                 (
                     match["match_id"],
@@ -234,7 +248,7 @@ class Database:
             SELECT *
             FROM asian_handicap_lines
             WHERE match_id = ?
-            ORDER BY is_opening DESC, id ASC
+            ORDER BY is_opening DESC, COALESCE(captured_at, '') ASC, id ASC
             """,
             (match_id,),
         )
