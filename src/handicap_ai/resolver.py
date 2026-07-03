@@ -15,7 +15,9 @@ FUZZY_AMBIGUITY_MARGIN = 3
 def _format_candidate_rows(matches: list[sqlite3.Row]) -> str:
     return "\n".join(
         (
-            f"- competition={match['competition']}, "
+            f"- match_id={match['match_id']}, "
+            f"source_match_id={match['source_match_id']}, "
+            f"competition={match['competition']}, "
             f"kickoff_time={match['kickoff_time']}, "
             f"home_team={match['home_team']}, "
             f"away_team={match['away_team']}"

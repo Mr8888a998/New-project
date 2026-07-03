@@ -76,6 +76,35 @@ def test_resolver_raises_when_exact_match_is_ambiguous(tmp_path):
         raise AssertionError("expected LookupError")
 
 
+def test_resolver_ambiguity_message_identifies_same_fixture_candidates(tmp_path):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+    kickoff_time = datetime(2026, 6, 18, 20, tzinfo=timezone.utc)
+    _insert_match(
+        db,
+        source_match_id="fd:feed-a:2026-06-18:england-panama",
+        competition="World Cup",
+        kickoff_time=kickoff_time,
+    )
+    _insert_match(
+        db,
+        source_match_id="fd:feed-b:2026-06-18:england-panama",
+        competition="World Cup",
+        kickoff_time=kickoff_time,
+    )
+
+    try:
+        MatchResolver(db).resolve("England", "Panama")
+    except LookupError as exc:
+        message = str(exc)
+        assert "Multiple matches found for England vs Panama" in message
+        assert "match_id=" in message
+        assert "source_match_id=fd:feed-a:2026-06-18:england-panama" in message
+        assert "source_match_id=fd:feed-b:2026-06-18:england-panama" in message
+    else:
+        raise AssertionError("expected LookupError")
+
+
 def test_resolver_fuzzy_matches_normalized_home_and_away(tmp_path):
     db = Database(tmp_path / "handicap.sqlite")
     db.migrate()
