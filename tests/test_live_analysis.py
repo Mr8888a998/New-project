@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from handicap_ai.database import Database
 from handicap_ai.live_analysis import analyze_saved_html
 from handicap_ai.models import MatchRecord, MatchStatus
@@ -37,6 +39,37 @@ def test_analyze_saved_html_marks_incomplete_coverage(tmp_path):
 
     assert result.coverage.is_complete is False
     assert result.coverage.missing_markets == ("totals",)
+
+
+def test_analyze_saved_html_supports_oddsportal_source(tmp_path):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+
+    result = analyze_saved_html(
+        db=db,
+        source="oddsportal",
+        html_path=Path("tests/fixtures/oddsportal_match.html"),
+    )
+
+    assert result.match["home_team"] == "England"
+    assert result.match["away_team"] == "Panama"
+    assert result.coverage.is_complete is True
+    assert result.report.handicap.market == "handicap"
+    assert result.report.total.market == "total"
+    assert result.report.one_x_two.market == "1x2"
+    assert db.list_source_fetches("oddsportal")
+
+
+def test_analyze_saved_html_rejects_unsupported_source(tmp_path):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+
+    with pytest.raises(ValueError, match="unsupported source: unknown"):
+        analyze_saved_html(
+            db=db,
+            source="unknown",
+            html_path=Path("tests/fixtures/betexplorer_match.html"),
+        )
 
 
 def test_analyze_saved_html_resolves_ingested_match_when_history_has_same_teams(
