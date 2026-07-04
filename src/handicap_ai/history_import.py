@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -139,6 +140,10 @@ def _value_for_header(values: Sequence[str], header: list[str], field: str) -> s
 def _clean_cell(value: Any) -> str:
     if value is None:
         return ""
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%y")
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%y")
     return str(value).strip()
 
 
