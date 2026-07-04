@@ -5,20 +5,37 @@ Local football handicap analysis tool.
 ## Setup
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m venv .venv
+.venv\Scripts\python -m pip install -e ".[dev]"
 ```
 
-Use the bundled Codex Python in this workspace when the standard `python`
-command points to the Windows Store alias.
+If the standard `python` command points to the Windows Store alias, use the
+bundled Codex Python executable for local verification.
 
-## Test
+## Import Fixture Data
 
 ```bash
-python -m pytest
+handicap-ai init-db --db data/handicap_ai.sqlite
+handicap-ai import-football-data --db data/handicap_ai.sqlite --csv tests/fixtures/football_data_sample.csv --season 2026
 ```
 
-## MVP Flow
+## Analyze a Match
 
-1. Import free-source odds data.
-2. Resolve a match from home and away team names.
-3. Output picks for Asian handicap, over/under, and 1X2.
+```bash
+handicap-ai analyze --db data/handicap_ai.sqlite --home England --away Panama
+```
+
+The output includes:
+
+- Handicap pick
+- Total pick
+- 1X2 pick
+- Confidence
+- Data quality
+- Reasons
+- Risk tags
+
+## Notes
+
+The MVP is a decision-support tool. It does not place bets and does not claim
+certainty.
