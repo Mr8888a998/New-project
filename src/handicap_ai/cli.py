@@ -8,8 +8,10 @@ import typer
 from handicap_ai.adapters.football_data import FootballDataCsvAdapter
 from handicap_ai.database import Database
 from handicap_ai.features import build_match_features
+from handicap_ai.history_import import import_history_folder
 from handicap_ai.ingest import ingest_bundles
 from handicap_ai.labels import label_to_recommendation_bucket
+from handicap_ai.live_analysis import analyze_saved_html
 from handicap_ai.recommendation import RecommendationEngine
 from handicap_ai.report import render_text_report
 from handicap_ai.resolver import MatchResolver
@@ -62,6 +64,45 @@ def analyze(
     similar = _similar_matches(database, match_id, features)
     report = RecommendationEngine().recommend(features, similar=similar)
     console.print(render_text_report(match["home_team"], match["away_team"], report))
+
+
+@app.command("import-history-folder")
+def import_history_folder_command(
+    path: Path = typer.Option(..., "--path"),
+    season: str = typer.Option(..., "--season"),
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    summary = import_history_folder(database, path, season)
+    console.print(f"Imported files: {summary.files_imported}")
+    console.print(f"Skipped files: {summary.files_skipped}")
+    console.print(f"Imported matches: {summary.matches_imported}")
+    for error in summary.errors:
+        console.print(f"Import error: {error}")
+
+
+@app.command("scrape-match")
+def scrape_match(
+    source: str = typer.Option(..., "--source"),
+    html: Path = typer.Option(..., "--html"),
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    result = analyze_saved_html(database, source=source, html_path=html)
+    coverage_label = "complete" if result.coverage.is_complete else "incomplete"
+    console.print(
+        f"Scraped {result.match['home_team']} vs {result.match['away_team']} from {source}"
+    )
+    console.print(f"Source coverage: {coverage_label}")
+    console.print(
+        render_text_report(
+            result.match["home_team"],
+            result.match["away_team"],
+            result.report,
+        )
+    )
 
 
 def _similar_matches(database: Database, match_id: int, features):
