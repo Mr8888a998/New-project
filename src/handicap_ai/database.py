@@ -396,3 +396,15 @@ class Database:
             """,
             (match_id,),
         )
+
+    def all_finished_matches(self) -> list[sqlite3.Row]:
+        return self.execute(
+            """
+            SELECT *
+            FROM matches
+            WHERE status = 'finished'
+              AND home_score IS NOT NULL
+              AND away_score IS NOT NULL
+            ORDER BY kickoff_time DESC, match_id DESC
+            """
+        )
