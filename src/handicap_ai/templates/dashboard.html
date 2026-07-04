@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/dashboard.css') }}">
+  </head>
+  <body>
+    <main class="workspace">
+      <aside class="control-panel" aria-labelledby="workspace-title">
+        <div class="brand-lockup">
+          <p class="eyebrow">Local dashboard</p>
+          <h1 id="workspace-title">Handicap AI Analyst Workspace</h1>
+        </div>
+
+        <form id="analysis-form" class="source-form">
+          <fieldset>
+            <legend>Saved HTML</legend>
+            <label for="source">Source</label>
+            <select id="source" name="source">
+              <option value="betexplorer">BetExplorer</option>
+              <option value="oddsportal">OddsPortal</option>
+            </select>
+
+            <label for="html-path">HTML path</label>
+            <input
+              id="html-path"
+              name="html_path"
+              type="text"
+              value="tests/fixtures/betexplorer_match.html"
+              autocomplete="off"
+            >
+          </fieldset>
+
+          <fieldset class="team-grid">
+            <legend>Match</legend>
+            <label for="home-team">Home team</label>
+            <input id="home-team" type="text" placeholder="Pending analysis" readonly>
+            <label for="away-team">Away team</label>
+            <input id="away-team" type="text" placeholder="Pending analysis" readonly>
+          </fieldset>
+
+          <button type="submit">Analyze saved HTML</button>
+          <p id="form-message" class="form-message" role="status">Ready</p>
+        </form>
+      </aside>
+
+      <section class="dashboard-grid" aria-label="Analysis workspace">
+        <section class="status-strip" aria-label="Source status">
+          <div>
+            <span class="label">Source status</span>
+            <strong id="source-status">No run yet</strong>
+          </div>
+          <div>
+            <span class="label">Coverage</span>
+            <strong id="coverage-status">Pending</strong>
+          </div>
+          <div>
+            <span class="label">Data quality</span>
+            <strong id="data-quality">Pending</strong>
+          </div>
+        </section>
+
+        <section class="result-grid" aria-label="Recommended picks">
+          <article class="result-card">
+            <span class="label">Handicap</span>
+            <strong id="handicap-pick">No pick</strong>
+            <span id="handicap-confidence">Confidence pending</span>
+          </article>
+          <article class="result-card">
+            <span class="label">Total</span>
+            <strong id="total-pick">No pick</strong>
+            <span id="total-confidence">Confidence pending</span>
+          </article>
+          <article class="result-card">
+            <span class="label">1X2</span>
+            <strong id="one-x-two-pick">No pick</strong>
+            <span id="one-x-two-confidence">Confidence pending</span>
+          </article>
+        </section>
+
+        <section class="workspace-panels">
+          <article class="panel wizard-panel">
+            <div class="panel-heading">
+              <span class="label">Wizard</span>
+              <strong id="match-title">Match pending</strong>
+            </div>
+            <ol>
+              <li>Load source HTML</li>
+              <li>Check market coverage</li>
+              <li>Review picks and risk</li>
+            </ol>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <span class="label">Risk tags</span>
+              <strong id="risk-summary">Pending</strong>
+            </div>
+            <div id="risk-tags" class="risk-tags">
+              <span>No tags yet</span>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const form = document.querySelector("#analysis-form");
+      const message = document.querySelector("#form-message");
+
+      function setText(id, value) {
+        document.querySelector(id).textContent = value;
+      }
+
+      function splitMatch(match) {
+        const parts = match.split(" vs ");
+        return {
+          home: parts[0] || "",
+          away: parts[1] || "",
+        };
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        message.textContent = "Analyzing";
+        setText("#source-status", data.get("source"));
+
+        try {
+          const response = await fetch("/api/analyze-saved-html", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              source: data.get("source"),
+              html_path: data.get("html_path"),
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Request failed: ${response.status}`);
+          }
+
+          const body = await response.json();
+          const teams = splitMatch(body.match);
+          document.querySelector("#home-team").value = teams.home;
+          document.querySelector("#away-team").value = teams.away;
+          setText("#match-title", body.match);
+          setText("#coverage-status", body.coverage);
+          setText("#data-quality", Number(body.data_quality).toFixed(2));
+          setText("#handicap-pick", body.picks.handicap);
+          setText("#total-pick", body.picks.total);
+          setText("#one-x-two-pick", body.picks["1x2"]);
+          setText("#handicap-confidence", `${body.confidence.handicap} confidence`);
+          setText("#total-confidence", `${body.confidence.total} confidence`);
+          setText("#one-x-two-confidence", `${body.confidence["1x2"]} confidence`);
+
+          const riskTags = document.querySelector("#risk-tags");
+          riskTags.replaceChildren();
+          const tags = body.risk_tags.length ? body.risk_tags : ["none"];
+          for (const tag of tags) {
+            const chip = document.createElement("span");
+            chip.textContent = tag;
+            riskTags.appendChild(chip);
+          }
+          setText("#risk-summary", `${tags.length} shown`);
+          message.textContent = "Analysis ready";
+        } catch (error) {
+          message.textContent = error.message;
+          setText("#source-status", "Error");
+        }
+      });
+    </script>
+  </body>
+</html>
