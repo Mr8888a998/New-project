@@ -1,3 +1,6 @@
+from pathlib import Path
+import tomllib
+
 from fastapi.testclient import TestClient
 
 from handicap_ai.ui import create_app
@@ -36,3 +39,21 @@ def test_saved_html_analysis_endpoint_returns_recommendations(tmp_path):
     assert body["picks"]["handicap"] in {"home", "away", "no_bet"}
     assert body["picks"]["total"] in {"over", "under", "no_bet"}
     assert body["picks"]["1x2"] in {"home", "draw", "away", "no_bet"}
+
+
+def test_dashboard_static_asset_is_served(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.get("/static/dashboard.css")
+
+    assert response.status_code == 200
+    assert "control-panel" in response.text
+
+
+def test_dashboard_assets_are_declared_as_package_data():
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    package_data = pyproject["tool"]["setuptools"]["package-data"]["handicap_ai"]
+
+    assert "templates/*.html" in package_data
+    assert "static/*.css" in package_data

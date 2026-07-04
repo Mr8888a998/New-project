@@ -30,6 +30,9 @@ handicap-ai = "handicap_ai.cli:app"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+handicap_ai = ["templates/*.html", "static/*.css"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
