@@ -140,6 +140,9 @@ CREATE TABLE IF NOT EXISTS source_fetches (
 CREATE INDEX IF NOT EXISTS idx_source_fetches_source
 ON source_fetches(source, fetched_at DESC);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_source_fetches_identity
+ON source_fetches(source, url, COALESCE(content_hash, ''));
+
 CREATE TABLE IF NOT EXISTS scrape_jobs (
   job_id INTEGER PRIMARY KEY AUTOINCREMENT,
   requested_home TEXT NOT NULL,
@@ -190,7 +193,7 @@ class Database:
                   error_message
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(source, url, content_hash) DO UPDATE SET
+                ON CONFLICT DO UPDATE SET
                   fetched_at = excluded.fetched_at,
                   status_code = excluded.status_code,
                   cache_path = excluded.cache_path,
@@ -209,9 +212,15 @@ class Database:
             row = conn.execute(
                 """
                 SELECT fetch_id FROM source_fetches
-                WHERE source = ? AND url = ? AND content_hash = ?
+                WHERE source = ? AND url = ?
+                  AND (content_hash = ? OR (content_hash IS NULL AND ? IS NULL))
                 """,
-                (record.source, record.url, record.content_hash),
+                (
+                    record.source,
+                    record.url,
+                    record.content_hash,
+                    record.content_hash,
+                ),
             ).fetchone()
             conn.commit()
             return int(row["fetch_id"])

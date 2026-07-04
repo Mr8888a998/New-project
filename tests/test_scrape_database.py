@@ -26,6 +26,30 @@ def test_database_stores_source_fetch_records_idempotently(tmp_path):
     assert rows[0]["content_hash"] == "hash-one"
 
 
+def test_database_stores_source_fetch_records_without_content_hash_idempotently(
+    tmp_path,
+):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+    record = SourceFetchRecord(
+        source="betexplorer",
+        url="https://example.test/no-hash",
+        fetched_at=datetime(2026, 7, 5, tzinfo=timezone.utc),
+        status_code=204,
+        cache_path=None,
+        content_hash=None,
+        error_message=None,
+    )
+
+    first_id = db.upsert_source_fetch(record)
+    second_id = db.upsert_source_fetch(record)
+
+    assert first_id == second_id
+    rows = db.list_source_fetches("betexplorer")
+    assert len(rows) == 1
+    assert rows[0]["content_hash"] is None
+
+
 def test_database_records_scrape_jobs(tmp_path):
     db = Database(tmp_path / "handicap.sqlite")
     db.migrate()
