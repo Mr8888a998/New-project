@@ -1,215 +1,269 @@
-# Live Data Sources Design
+# Web Scraping and Hybrid UI Design
 
 ## Goal
 
-Extend Handicap AI from a fixture and CSV MVP into a practical data-ingestion
-tool where the user enters only home and away team names, then the system can:
+Extend Handicap AI from a CLI MVP into a local odds-analysis workspace where the
+user enters only the home and away team names, then the system can gather odds
+from BetExplorer/OddsPortal-style pages, combine them with historical CSV/Excel
+data, and output the best available picks for:
 
-- fetch current match odds from an API source,
-- import larger historical datasets from CSV or Excel files,
-- combine current lines with local historical samples,
-- output the best available picks for Asian handicap, over/under, and 1X2.
+- Asian handicap or handicap-style spread.
+- Over/under.
+- 1X2.
 
-This version is still decision support. It should show data quality and no-bet
-states clearly rather than forcing an answer when a source is incomplete.
+The product remains a decision-support tool. It should expose data quality,
+source coverage, and no-bet reasons instead of claiming certainty.
 
-## Approved Source Strategy
+## Approved Product Direction
 
-Use two source families in this phase:
+The next version should prioritize:
 
-1. API source for current and upcoming matches.
-2. CSV or Excel imports for historical odds and result data.
+1. Web scraping from BetExplorer/OddsPortal-style odds pages.
+2. Historical CSV/Excel imports for local training and similarity samples.
+3. A local browser UI using an A+B hybrid layout:
+   - Dashboard for the normal fast workflow.
+   - Confirmation wizard only when match or odds extraction is ambiguous.
 
-Web scraping of BetExplorer, OddsPortal, or similar pages remains out of scope
-for this phase. It can be added later behind the same adapter interface if a
-stable and permitted access path is confirmed.
+API adapters remain useful as later fallback sources, but they are not the main
+implementation target for this phase.
 
-## Primary API Adapter
+## Scraping Boundaries
 
-Add a configurable odds API adapter, initially targeting The Odds API v4 because
-its public documentation exposes football/soccer odds with market families that
-map cleanly to the existing engine:
+Scraping must be conservative and user-triggered.
 
-- `h2h` for 1X2-like moneyline outcomes.
-- `spreads` for handicap-style lines where available.
-- `totals` for over/under lines where available.
+The system should:
 
-The adapter must not assume every event has every market. If a source returns
-only 1X2 and totals, handicap should become no-bet with a missing-market risk
-tag. If a source returns spread markets that are not true Asian handicap quarter
-lines, the adapter should store them as normalized handicap-style lines and mark
-the data source in the report.
+- Fetch pages only when the user requests an analysis or source refresh.
+- Cache fetched HTML and parsed odds snapshots.
+- Avoid high-frequency polling.
+- Respect robots, terms, rate limits, and source failures.
+- Never bypass login walls, paywalls, CAPTCHA, anti-bot protections, or access
+  controls.
+- Support manual import from saved HTML or CSV when a site blocks automated
+  fetching.
 
-Configuration:
+This means live scraping is best-effort. The stable test contract is fixture
+HTML stored in the repository, not live network behavior.
 
-- API key is read from `ODDS_API_KEY` by default.
-- Optional base URL allows fixture tests and future provider swaps.
-- Optional sport key defaults to soccer-oriented keys selected by the user or
-  command line.
-- Region and bookmaker filters are configurable.
+## Source Adapters
 
-The implementation must avoid hardcoding secrets. API keys are never written to
-logs, reports, SQLite, or committed files.
+Add a web-source adapter layer above the existing normalized models.
 
-## Historical CSV and Excel Imports
+Each adapter should expose:
 
-Enhance historical imports so the user can point the tool at either one file or
-a folder of downloaded datasets.
+```text
+search_match(home_team, away_team, date_window) -> candidate matches
+fetch_match_page(candidate or URL) -> raw HTML/cache record
+parse_match_page(raw HTML) -> NormalizedMatchBundle
+explain_coverage(bundle) -> markets found, missing markets, warnings
+```
 
-Supported inputs:
+Initial adapter targets:
 
-- Existing Football-Data CSV files.
-- Football-Data-style Excel files when a supported workbook parser is present.
-- A generic normalized CSV template for user-maintained data.
+- BetExplorer-style pages as the first concrete adapter.
+- OddsPortal-style pages as a second adapter when page access is stable enough.
+- Saved HTML adapter for fixtures and blocked-site fallback.
 
-The importer should detect supported file types and skip unsupported files with
-a clear message. It should be idempotent: importing the same folder twice should
-not duplicate matches or odds rows.
+All adapters must normalize into the existing domain records:
 
-The first implementation should support folder import before adding advanced
-spreadsheet UI features. Excel support may use `openpyxl` if available through
-project dependencies.
+- `MatchRecord`
+- `AsianHandicapLineRecord`
+- `TotalsLineRecord`
+- `OneXTwoLineRecord`
+- `NormalizedMatchBundle`
 
-## User Experience
+Source-specific selectors and parsing rules should stay inside adapter modules.
+The recommendation engine should not know which website produced the data.
 
-New or extended CLI commands:
+## Data Storage
+
+Keep SQLite as the local store and add scrape-focused metadata.
+
+New or extended concepts:
+
+- `source_fetches`: source name, URL, fetched_at, status code, cache path,
+  content hash, error message.
+- `scrape_jobs`: requested home/away, selected source, status, warnings.
+- Parsed odds snapshots should keep source and bookmaker fields.
+- Cached HTML files should live under ignored local data/cache paths, not in git.
+
+Idempotency is required. Re-fetching the same match should update or add a new
+snapshot without duplicating identical rows.
+
+## Historical Imports
+
+Continue supporting the existing Football-Data CSV import and add folder import.
+
+Supported historical inputs:
+
+- Football-Data CSV files.
+- Football-Data-style Excel files when workbook parsing is available.
+- A normalized user CSV template for custom datasets.
+
+The folder importer should summarize imported files, skipped files, parse
+errors, and match counts. One bad file should not abort the whole folder.
+
+## Local UI
+
+Build a local browser UI, not a landing page.
+
+Recommended stack:
+
+- Python backend using the existing package.
+- FastAPI or a similarly small local web server.
+- Server-rendered HTML templates plus small vanilla JavaScript for source
+  refresh and wizard interactions.
+- SQLite remains the data store.
+
+The first screen is the analyst workspace.
+
+Dashboard layout:
+
+- Left rail: home team, away team, optional date, source checkboxes, analyze
+  button, refresh source button.
+- Top result strip: handicap pick, total pick, 1X2 pick, confidence and data
+  quality.
+- Middle panel: opening/current line movement and water/price movement.
+- Source panel: BetExplorer/OddsPortal fetch status, parsed markets, warnings.
+- Bottom panel: similar historical matches and risk tags.
+
+Wizard triggers:
+
+- Multiple candidate matches found.
+- No exact team match but fuzzy candidates exist.
+- Scraped table lacks one or more markets.
+- BetExplorer and OddsPortal disagree materially.
+- Extracted odds look incomplete or malformed.
+
+Wizard steps:
+
+1. Confirm matched event.
+2. Review parsed markets.
+3. Confirm source priority when sources conflict.
+4. Run final analysis.
+
+## User Workflow
+
+Normal path:
+
+```text
+Open local UI
+Enter England / Panama
+Select BetExplorer and/or OddsPortal
+Click Analyze
+Review three market picks and source warnings
+```
+
+Ambiguous path:
+
+```text
+Enter team names
+System finds several possible matches
+Wizard asks user to pick the correct match
+System parses odds tables
+Wizard highlights missing or suspicious markets
+User confirms
+System outputs final picks
+```
+
+CLI should remain available for repeatable workflows:
 
 ```text
 handicap-ai import-history-folder --db data/handicap_ai.sqlite --path data/history
-handicap-ai fetch-api-match --db data/handicap_ai.sqlite --home England --away Panama
-handicap-ai analyze-live --db data/handicap_ai.sqlite --home England --away Panama
+handicap-ai scrape-match --db data/handicap_ai.sqlite --home England --away Panama --source betexplorer
+handicap-ai ui --db data/handicap_ai.sqlite
 ```
 
-`analyze-live` should:
+## Recommendation Behavior
 
-1. Resolve the requested teams against local history.
-2. Fetch current API events and odds for the same team pair.
-3. Ingest the fetched current match and odds into SQLite.
-4. Build current line features.
-5. Retrieve local historical similarity samples.
-6. Output one recommendation per market.
+The recommendation engine should still produce one result per market:
 
-Example output:
+- Handicap pick.
+- Total pick.
+- 1X2 pick.
 
-```text
-England vs Panama
+Market-specific no-bet rules:
 
-Handicap pick: Panama +2.25
-Total pick: Under 3.0
-1X2 pick: England win
-
-Data quality: 0.72
-Risk tags:
-- current_api_missing_opening_line
-- historical_sample_small
-- recheck_near_kickoff
-```
-
-If the API cannot find a match, the command should report the searched team
-names, sport key, region, and source. If multiple API events match, it should
-choose the nearest upcoming kickoff by default and show the chosen event.
-
-## Normalization Rules
-
-The API adapter should convert provider payloads into existing
-`NormalizedMatchBundle` records.
-
-Match fields:
-
-- source match id uses a stable provider id with a source prefix.
-- home and away team names are preserved as provider display names.
-- normalized names are still handled by the database and resolver.
-- kickoff time comes from the provider when available.
-- status is scheduled unless a completed result is explicitly present.
-
-Market fields:
-
-- `h2h` maps to `OneXTwoLineRecord`.
-- `spreads` maps to `AsianHandicapLineRecord` with source metadata preserved.
-- `totals` maps to `TotalsLineRecord`.
-- captured time is the fetch time when the provider does not include a market
-  timestamp.
-- API odds are treated as current or closing-like snapshots, not true opening
-  lines, unless a provider explicitly supplies opening prices.
-
-Because many current-odds APIs do not provide historical open-to-close movement,
-data quality should be reduced when opening lines are missing.
-
-## Data Quality and Risk Tags
-
-Add or reuse risk tags for live-data scenarios:
-
-- `current_api_missing_market`
-- `current_api_missing_opening_line`
-- `api_rate_limited`
-- `api_match_ambiguous`
-- `api_match_not_found`
-- `historical_import_partial`
-- `historical_sample_small`
-- `source_market_not_asian_handicap`
-
-Recommendation behavior:
-
-- If a market is missing current odds, output no-bet for that market.
-- If current odds exist but historical samples are weak, allow a low-confidence
-  pick only when rule-based signals are strong; otherwise no-bet.
+- Missing current market means no-bet for that market.
+- Missing opening line lowers data quality but does not automatically block a
+  pick if current line and historical samples are strong.
+- Source conflict lowers confidence and triggers wizard confirmation.
 - If only 1X2 is available, handicap and total should not infer picks from 1X2
   alone.
 
+Risk tags to add or reuse:
+
+- `scrape_match_ambiguous`
+- `scrape_source_blocked`
+- `scrape_market_missing`
+- `scrape_table_untrusted`
+- `source_conflict`
+- `missing_opening_line`
+- `historical_sample_small`
+- `manual_confirmation_required`
+
 ## Error Handling
 
-API failures:
+Source fetch failures:
 
-- On 401 or invalid key, report that `ODDS_API_KEY` is missing or invalid.
-- On 429 or quota exhaustion, report `api_rate_limited` and keep cached data.
-- On network timeout, report the source failure and avoid overwriting newer
-  cached snapshots.
-- On malformed provider payloads, fail that source adapter without crashing
-  other importers.
+- Show which source failed and why.
+- Keep existing cached data when available.
+- Mark cached data age in the UI.
+- Do not overwrite newer good data with failed or malformed fetches.
 
-Import failures:
+Parsing failures:
 
-- One bad file should not abort a full folder import.
-- The command should summarize imported files, skipped files, matches imported,
-  and parser errors.
-- Unsupported columns should produce a clear parse error naming the file and
-  missing fields.
+- Store the raw fetch record for debugging.
+- Show the missing selector or expected table type.
+- Continue with other sources when possible.
+
+UI failures:
+
+- The UI should surface backend errors as plain status panels.
+- No spinner should run forever; every job ends as success, partial, failed, or
+  needs confirmation.
 
 ## Testing Strategy
 
+No automated tests should depend on live BetExplorer or OddsPortal access.
+
 Unit tests:
 
-- API response parsing for h2h, spreads, and totals.
-- Missing-market handling.
-- Environment-variable configuration without exposing secrets.
-- CSV folder discovery and idempotent import.
-- Excel import when workbook support is installed.
+- Parse fixture HTML for 1X2, handicap, and over/under tables.
+- Handle missing market tables.
+- Handle multiple candidate matches.
+- Normalize team names from source display strings.
+- Summarize source coverage and warnings.
 
 Integration tests:
 
-- Fixture-backed API client using local JSON payloads.
-- `fetch-api-match` writes normalized records to SQLite.
-- `analyze-live` combines fetched current odds with local historical data.
-- Folder import handles a mixed directory of CSV, Excel, and unsupported files.
+- Saved HTML fixture imports into SQLite.
+- `scrape-match` ingests one fixture-backed match.
+- UI route renders the dashboard.
+- UI analysis endpoint returns three market recommendations or market-specific
+  no-bet responses.
+- Folder import handles mixed CSV/Excel/unsupported files.
 
-No tests should require a real API key or live network access. Live API behavior
-can be covered by a manual smoke command documented in the README.
+Manual smoke tests:
+
+- Run local UI.
+- Try a real BetExplorer/OddsPortal URL if accessible.
+- Verify blocked or malformed pages produce clear warnings.
 
 ## Documentation
 
 Update README with:
 
-- API key setup through `ODDS_API_KEY`.
+- Local UI startup command.
 - Historical folder import examples.
-- Live analysis examples.
-- Explanation that current API odds may lack opening lines.
-- A short warning that the tool does not place bets and does not guarantee
-  outcomes.
+- Saved HTML import fallback.
+- Source limitations and scraping boundaries.
+- Explanation that the tool does not place bets and does not guarantee results.
 
 ## Implementation Boundary
 
-This design should be implemented as one focused feature branch. It includes API
-adapter scaffolding, fixture-backed tests, folder import, and CLI commands. It
-does not include paid subscription management, browser automation, automated
-betting, or a web UI.
+This phase should deliver a usable local UI, fixture-backed web-source parsing,
+source-cache plumbing, and CLI/UI workflows. It should not attempt background
+polling, account login, CAPTCHA solving, paid data access, browser extension
+automation, or automated betting.
 
