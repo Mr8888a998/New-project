@@ -13,6 +13,7 @@ from handicap_ai.models import (
     TotalsLineRecord,
 )
 from handicap_ai.names import normalize_team_name
+from handicap_ai.scraping.models import SourceFetchRecord
 
 
 SCHEMA = """
@@ -123,6 +124,31 @@ ON one_x_two_lines(
   is_closing,
   COALESCE(captured_at, '')
 );
+
+CREATE TABLE IF NOT EXISTS source_fetches (
+  fetch_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  url TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  status_code INTEGER,
+  cache_path TEXT,
+  content_hash TEXT,
+  error_message TEXT,
+  UNIQUE(source, url, content_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_fetches_source
+ON source_fetches(source, fetched_at DESC);
+
+CREATE TABLE IF NOT EXISTS scrape_jobs (
+  job_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  requested_home TEXT NOT NULL,
+  requested_away TEXT NOT NULL,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL,
+  warnings TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -149,6 +175,93 @@ class Database:
     ) -> list[sqlite3.Row]:
         with closing(self.connect()) as conn:
             return list(conn.execute(sql, parameters))
+
+    def upsert_source_fetch(self, record: SourceFetchRecord) -> int:
+        with closing(self.connect()) as conn:
+            conn.execute(
+                """
+                INSERT INTO source_fetches (
+                  source,
+                  url,
+                  fetched_at,
+                  status_code,
+                  cache_path,
+                  content_hash,
+                  error_message
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source, url, content_hash) DO UPDATE SET
+                  fetched_at = excluded.fetched_at,
+                  status_code = excluded.status_code,
+                  cache_path = excluded.cache_path,
+                  error_message = excluded.error_message
+                """,
+                (
+                    record.source,
+                    record.url,
+                    record.fetched_at.isoformat(),
+                    record.status_code,
+                    record.cache_path,
+                    record.content_hash,
+                    record.error_message,
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT fetch_id FROM source_fetches
+                WHERE source = ? AND url = ? AND content_hash = ?
+                """,
+                (record.source, record.url, record.content_hash),
+            ).fetchone()
+            conn.commit()
+            return int(row["fetch_id"])
+
+    def list_source_fetches(self, source: str) -> list[sqlite3.Row]:
+        return self.execute(
+            """
+            SELECT * FROM source_fetches
+            WHERE source = ?
+            ORDER BY fetched_at DESC, fetch_id DESC
+            """,
+            (source,),
+        )
+
+    def insert_scrape_job(
+        self,
+        requested_home: str,
+        requested_away: str,
+        source: str,
+        status: str,
+        warnings: tuple[str, ...],
+    ) -> int:
+        with closing(self.connect()) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO scrape_jobs (
+                  requested_home,
+                  requested_away,
+                  source,
+                  status,
+                  warnings
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    requested_home,
+                    requested_away,
+                    source,
+                    status,
+                    "\n".join(warnings),
+                ),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def get_scrape_job(self, job_id: int) -> sqlite3.Row:
+        rows = self.execute("SELECT * FROM scrape_jobs WHERE job_id = ?", (job_id,))
+        if not rows:
+            raise ValueError(f"scrape job not found: {job_id}")
+        return rows[0]
 
     def upsert_team(self, team: TeamRecord) -> None:
         with closing(self.connect()) as conn:
