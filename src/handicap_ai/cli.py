@@ -7,6 +7,7 @@ import typer
 import uvicorn
 
 from handicap_ai.adapters.football_data import FootballDataCsvAdapter
+from handicap_ai.candidate_search import find_world_cup_candidates
 from handicap_ai.database import Database
 from handicap_ai.features import build_match_features
 from handicap_ai.history_import import import_history_folder
@@ -19,6 +20,7 @@ from handicap_ai.resolver import MatchResolver
 from handicap_ai.settlement import settle_handicap, settle_one_x_two, settle_total
 from handicap_ai.similarity import SimilarityCandidate, SimilarityResult, find_similar_matches
 from handicap_ai.ui import create_app
+from handicap_ai.world_cup_seed import import_world_cup_2026_seed
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -47,6 +49,46 @@ def import_football_data(
     bundles = FootballDataCsvAdapter(csv, season=season).load()
     count = ingest_bundles(database, bundles)
     console.print(f"Imported {count} matches")
+
+
+@app.command("seed-world-cup")
+def seed_world_cup(
+    season: str = typer.Option("2026", "--season"),
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+) -> None:
+    if season != "2026":
+        raise typer.BadParameter("only 2026 is supported in this seed")
+    database = Database(db)
+    database.migrate()
+    summary = import_world_cup_2026_seed(database)
+    console.print(f"World Cup teams: {summary.teams_imported}")
+    console.print(f"World Cup fixtures: {summary.fixtures_imported}")
+    console.print(f"World Cup aliases: {summary.aliases_imported}")
+
+
+@app.command("find-candidates")
+def find_candidates(
+    home: str = typer.Option(..., "--home"),
+    away: str = typer.Option(..., "--away"),
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    result = find_world_cup_candidates(database, home_team=home, away_team=away)
+    console.print(f"Status: {result.status.value}")
+    for warning in result.warnings:
+        console.print(f"Warning: {warning}")
+    for candidate in result.candidates:
+        console.print(
+            f"Group {candidate.group_name}: {candidate.home_team} vs {candidate.away_team}"
+        )
+        if candidate.sources:
+            for source, link in candidate.sources.items():
+                console.print(
+                    f"- {source}: {link.status} {link.html_path or ''}".rstrip()
+                )
+        else:
+            console.print("- saved HTML required")
 
 
 @app.command("analyze")
