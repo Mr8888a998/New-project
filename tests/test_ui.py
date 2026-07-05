@@ -26,6 +26,14 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "Register source URL" in response.text
     assert "Fetch source HTML" in response.text
     assert "Source links" in response.text
+    assert 'id="source-url"' in response.text
+    assert "required" in response.text
+    assert "checkValidity()" in response.text
+    assert "reportValidity()" in response.text
+    assert "setSourceBusy" in response.text
+    assert "sourceRequestId" in response.text
+    assert "registerSourceUrlButton.disabled" in response.text
+    assert "cache_dir" not in response.text
 
 
 def test_saved_html_analysis_endpoint_returns_recommendations(tmp_path):

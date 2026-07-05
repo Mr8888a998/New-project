@@ -99,7 +99,7 @@
             </div>
             <div class="source-actions">
               <label for="source-url">Manual source URL</label>
-              <input id="source-url" type="url" placeholder="https://www.betexplorer.com/...">
+              <input id="source-url" type="url" required placeholder="https://www.betexplorer.com/...">
               <button id="register-source-url-button" type="button">Register source URL</button>
               <button id="discover-sources-button" type="button">Discover sources</button>
               <button id="fetch-source-html-button" type="button">Fetch source HTML</button>
@@ -141,6 +141,7 @@
       const registerSourceUrlButton = document.querySelector("#register-source-url-button");
       const discoverSourcesButton = document.querySelector("#discover-sources-button");
       const fetchSourceHtmlButton = document.querySelector("#fetch-source-html-button");
+      let sourceRequestId = 0;
 
       function setText(id, value) {
         document.querySelector(id).textContent = value;
@@ -156,6 +157,12 @@
           away_team: document.querySelector("#away-team").value,
           source: selectedSource(),
         };
+      }
+
+      function setSourceBusy(isBusy) {
+        registerSourceUrlButton.disabled = isBusy;
+        discoverSourcesButton.disabled = isBusy;
+        fetchSourceHtmlButton.disabled = isBusy;
       }
 
       function splitMatch(match) {
@@ -284,21 +291,32 @@
       }
 
       async function postSourceAction(path, payload) {
+        const requestId = sourceRequestId + 1;
+        sourceRequestId = requestId;
+        setSourceBusy(true);
         message.textContent = "Updating source link";
 
-        const response = await fetch(path, {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(payload),
-        });
+        try {
+          const response = await fetch(path, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload),
+          });
 
-        if (!response.ok) {
-          throw new Error(await errorMessage(response));
+          if (!response.ok) {
+            throw new Error(await errorMessage(response));
+          }
+
+          const body = await response.json();
+          if (requestId === sourceRequestId) {
+            renderSourceResult(body);
+            message.textContent = "Source link updated";
+          }
+        } finally {
+          if (requestId === sourceRequestId) {
+            setSourceBusy(false);
+          }
         }
-
-        const body = await response.json();
-        renderSourceResult(body);
-        message.textContent = "Source link updated";
       }
 
       findCandidatesButton.addEventListener("click", async () => {
@@ -312,9 +330,18 @@
 
       registerSourceUrlButton.addEventListener("click", async () => {
         try {
+          const sourceUrlInput = document.querySelector("#source-url");
+          sourceUrlInput.value = sourceUrlInput.value.trim();
+          if (!sourceUrlInput.checkValidity()) {
+            sourceUrlInput.reportValidity();
+            message.textContent = "Enter a valid source URL";
+            setText("#source-link-status", "URL required");
+            return;
+          }
+
           await postSourceAction("/api/register-source-url", {
             ...selectedFixture(),
-            url: document.querySelector("#source-url").value,
+            url: sourceUrlInput.value,
           });
         } catch (error) {
           message.textContent = error.message;
