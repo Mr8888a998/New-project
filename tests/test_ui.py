@@ -139,3 +139,116 @@ def test_dashboard_assets_are_declared_as_package_data():
 
     assert "templates/*.html" in package_data
     assert "static/*.css" in package_data
+
+
+def test_register_source_url_endpoint_updates_candidate(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/register-source-url",
+        json={
+            "home_team": "England",
+            "away_team": "Ghana",
+            "source": "betexplorer",
+            "url": "https://example.test/england-ghana",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "betexplorer"
+    assert body["status"] == "pending"
+    assert body["url"] == "https://example.test/england-ghana"
+
+
+def test_discover_sources_endpoint_uses_listing_html(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+    html = Path("tests/fixtures/source_listing_betexplorer.html").read_text(
+        encoding="utf-8"
+    )
+
+    response = client.post(
+        "/api/discover-sources",
+        json={
+            "home_team": "England",
+            "away_team": "Ghana",
+            "source": "betexplorer",
+            "listing_html": html,
+            "base_url": "https://www.betexplorer.com",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "pending"
+    assert "england-ghana/KhgvzGjJ/" in body["url"]
+
+
+def test_discover_sources_endpoint_requires_base_url_with_listing_html(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/discover-sources",
+        json={
+            "home_team": "England",
+            "away_team": "Ghana",
+            "source": "betexplorer",
+            "listing_html": "<a href='/match/england-ghana'>England - Ghana</a>",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "base_url" in response.json()["detail"]
+
+
+def test_fetch_source_html_endpoint_uses_response_html(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+    client.post(
+        "/api/register-source-url",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+            "url": "https://example.test/england-panama",
+        },
+    )
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+
+    response = client.post(
+        "/api/fetch-source-html",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+            "response_html": html,
+            "cache_dir": str(tmp_path / "cache"),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "available"
+    assert Path(body["html_path"]).is_file()
+
+
+def test_fetch_source_html_endpoint_requires_registered_url(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/fetch-source-html",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+            "response_html": "<html></html>",
+            "cache_dir": str(tmp_path / "cache"),
+        },
+    )
+
+    assert response.status_code == 400
+    assert "no registered URL" in response.json()["detail"]
