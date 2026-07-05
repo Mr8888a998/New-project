@@ -36,6 +36,17 @@ def fake_listing_get(
     return _get
 
 
+def source_link(db, home_team="England", away_team="Ghana", source="betexplorer"):
+    fixture = db.find_tournament_fixtures(
+        "fifa_world_cup",
+        "2026",
+        home_team,
+        away_team,
+    )[0]
+    links = db.list_fixture_source_links(int(fixture["fixture_id"]))
+    return next(link for link in links if link["source"] == source)
+
+
 def test_register_fixture_source_url_updates_candidate_link(tmp_path):
     db = seeded_db(tmp_path)
 
@@ -106,6 +117,68 @@ def test_discover_fixture_source_from_oddsportal_listing(tmp_path):
     assert result.url == "https://www.oddsportal.com/football/world/world-championship-2026/england-ghana/"
 
 
+def test_discover_fixture_source_from_listing_preserves_available_link_on_match(tmp_path):
+    db = seeded_db(tmp_path)
+    fixture = db.find_tournament_fixtures("fifa_world_cup", "2026", "England", "Ghana")[0]
+    db.upsert_fixture_source_link(
+        fixture_id=int(fixture["fixture_id"]),
+        source="betexplorer",
+        html_path="data/cache/betexplorer/england-ghana.html",
+        url="https://example.test/england-ghana",
+        status="available",
+    )
+    html = Path("tests/fixtures/source_listing_betexplorer.html").read_text(encoding="utf-8")
+
+    result = discover_fixture_source_from_listing(
+        db,
+        home_team="England",
+        away_team="Ghana",
+        source="betexplorer",
+        listing_html=html,
+        base_url="https://www.betexplorer.com",
+    )
+
+    persisted = source_link(db)
+    assert result.status is SourceLinkStatus.AVAILABLE
+    assert result.html_path == "data/cache/betexplorer/england-ghana.html"
+    assert result.url == "https://example.test/england-ghana"
+    assert persisted["status"] == "available"
+    assert persisted["html_path"] == "data/cache/betexplorer/england-ghana.html"
+    assert persisted["url"] == "https://example.test/england-ghana"
+
+
+def test_discover_fixture_source_from_listing_matches_seeded_usa_alias(tmp_path):
+    db = seeded_db(tmp_path)
+
+    result = discover_fixture_source_from_listing(
+        db,
+        home_team="United States",
+        away_team="Paraguay",
+        source="betexplorer",
+        listing_html="<html><a href='/football/world/world-championship-2026/usa-paraguay/'>USA - Paraguay</a></html>",
+        base_url="https://www.betexplorer.com",
+    )
+
+    assert result.status is SourceLinkStatus.PENDING
+    assert result.url == "https://www.betexplorer.com/football/world/world-championship-2026/usa-paraguay/"
+
+
+def test_discover_fixture_source_from_listing_matches_seeded_ivory_coast_alias(tmp_path):
+    db = seeded_db(tmp_path)
+
+    result = discover_fixture_source_from_listing(
+        db,
+        home_team="Ivory Coast",
+        away_team="Germany",
+        source="betexplorer",
+        listing_html="<html><a href='/football/world/world-championship-2026/cote-d-ivoire-germany/'>Cote d'Ivoire - Germany</a></html>",
+        base_url="https://www.betexplorer.com",
+    )
+
+    assert result.status is SourceLinkStatus.PENDING
+    assert result.url == "https://www.betexplorer.com/football/world/world-championship-2026/cote-d-ivoire-germany/"
+
+
 def test_discover_fixture_source_fetches_default_listing(tmp_path):
     db = seeded_db(tmp_path)
     html = Path("tests/fixtures/source_listing_betexplorer.html").read_text(encoding="utf-8")
@@ -127,6 +200,27 @@ def test_discover_fixture_source_fetches_default_listing(tmp_path):
     assert result.url == "https://www.betexplorer.com/football/world/world-championship-2026/england-ghana/KhgvzGjJ/"
 
 
+def test_discover_fixture_source_parses_listing_with_login_nav(tmp_path):
+    db = seeded_db(tmp_path)
+    html = """
+    <html>
+      <a href="/login">Login</a>
+      <a href="/football/world/world-championship-2026/england-ghana/KhgvzGjJ/">England - Ghana</a>
+    </html>
+    """
+
+    result = discover_fixture_source(
+        db,
+        home_team="England",
+        away_team="Ghana",
+        source="betexplorer",
+        http_get=fake_listing_get(html),
+    )
+
+    assert result.status is SourceLinkStatus.PENDING
+    assert result.url == "https://www.betexplorer.com/football/world/world-championship-2026/england-ghana/KhgvzGjJ/"
+
+
 def test_discover_fixture_source_marks_blocked_when_listing_blocked(tmp_path):
     db = seeded_db(tmp_path)
 
@@ -141,6 +235,10 @@ def test_discover_fixture_source_marks_blocked_when_listing_blocked(tmp_path):
     assert result.status is SourceLinkStatus.BLOCKED
     assert result.url is None
     assert "blocked" in result.warnings[0]
+    persisted = source_link(db)
+    assert persisted["status"] == "blocked"
+    assert persisted["url"] is None
+    assert persisted["html_path"] is None
 
 
 def test_discover_fixture_source_marks_402_listing_as_blocked(tmp_path):
@@ -157,6 +255,10 @@ def test_discover_fixture_source_marks_402_listing_as_blocked(tmp_path):
     assert result.status is SourceLinkStatus.BLOCKED
     assert result.url is None
     assert result.warnings == ("listing fetch blocked by source",)
+    persisted = source_link(db)
+    assert persisted["status"] == "blocked"
+    assert persisted["url"] is None
+    assert persisted["html_path"] is None
 
 
 def test_discover_fixture_source_marks_login_listing_as_blocked(tmp_path):
@@ -173,6 +275,10 @@ def test_discover_fixture_source_marks_login_listing_as_blocked(tmp_path):
     assert result.status is SourceLinkStatus.BLOCKED
     assert result.url is None
     assert result.warnings == ("listing fetch blocked by source",)
+    persisted = source_link(db)
+    assert persisted["status"] == "blocked"
+    assert persisted["url"] is None
+    assert persisted["html_path"] is None
 
 
 def test_discover_fixture_source_reports_http_error_message_as_failed(tmp_path):
@@ -189,6 +295,10 @@ def test_discover_fixture_source_reports_http_error_message_as_failed(tmp_path):
     assert result.status is SourceLinkStatus.FAILED
     assert result.url is None
     assert result.warnings == ("dns failed",)
+    persisted = source_link(db)
+    assert persisted["status"] == "failed"
+    assert persisted["url"] is None
+    assert persisted["html_path"] is None
 
 
 def test_discover_fixture_source_rejects_unsupported_source(tmp_path):
@@ -219,6 +329,10 @@ def test_discovery_reports_manual_required_when_no_listing_match(tmp_path):
     assert result.status is SourceLinkStatus.MANUAL_REQUIRED
     assert result.url is None
     assert "No source URL found for England vs Ghana" in result.warnings
+    persisted = source_link(db)
+    assert persisted["status"] == "manual_required"
+    assert persisted["url"] is None
+    assert persisted["html_path"] is None
 
 
 def test_discovery_failure_does_not_overwrite_available_source_link(tmp_path):

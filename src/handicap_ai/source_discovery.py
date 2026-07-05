@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from html.parser import HTMLParser
+import sqlite3
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
@@ -123,6 +124,16 @@ def discover_fixture_source(
     response = http_get(listing_url)
     fetch_status, warning = _listing_fetch_status(response)
     if fetch_status is not SourceLinkStatus.PENDING:
+        if _can_parse_text_blocked_listing(response, fetch_status):
+            url = _find_listing_url(
+                response.text,
+                _normalized_team_name_candidates(db, fixture["home_team"], season),
+                _normalized_team_name_candidates(db, fixture["away_team"], season),
+                response.url or listing_url,
+            )
+            if url is not None:
+                return _pending_or_available_result(db, fixture_id, source_key, url)
+
         warnings = (warning,)
         available = _available_result(db, fixture_id, source_key, warnings)
         if available is not None:
@@ -168,25 +179,12 @@ def discover_fixture_source_from_listing(
     fixture_id = int(fixture["fixture_id"])
     url = _find_listing_url(
         listing_html,
-        fixture["home_team"],
-        fixture["away_team"],
+        _normalized_team_name_candidates(db, fixture["home_team"], season),
+        _normalized_team_name_candidates(db, fixture["away_team"], season),
         base_url,
     )
     if url is not None:
-        db.upsert_fixture_source_link(
-            fixture_id=fixture_id,
-            source=source_key,
-            html_path=None,
-            url=url,
-            status=SourceLinkStatus.PENDING.value,
-        )
-        return SourceLinkResult(
-            status=SourceLinkStatus.PENDING,
-            fixture_id=fixture_id,
-            source=source_key,
-            html_path=None,
-            url=url,
-        )
+        return _pending_or_available_result(db, fixture_id, source_key, url)
 
     warnings = (
         f"No source URL found for {fixture['home_team']} vs {fixture['away_team']}",
@@ -211,7 +209,12 @@ def discover_fixture_source_from_listing(
     )
 
 
-def _single_fixture(db: Database, home_team: str, away_team: str, season: str):
+def _single_fixture(
+    db: Database,
+    home_team: str,
+    away_team: str,
+    season: str,
+) -> sqlite3.Row:
     resolved_home = db.resolve_tournament_team(FIFA_WORLD_CUP, season, home_team)
     resolved_away = db.resolve_tournament_team(FIFA_WORLD_CUP, season, away_team)
     if resolved_home is None:
@@ -238,6 +241,32 @@ def _single_fixture(db: Database, home_team: str, away_team: str, season: str):
     return fixtures[0]
 
 
+def _pending_or_available_result(
+    db: Database,
+    fixture_id: int,
+    source: str,
+    url: str,
+) -> SourceLinkResult:
+    available = _available_result(db, fixture_id, source)
+    if available is not None:
+        return available
+
+    db.upsert_fixture_source_link(
+        fixture_id=fixture_id,
+        source=source,
+        html_path=None,
+        url=url,
+        status=SourceLinkStatus.PENDING.value,
+    )
+    return SourceLinkResult(
+        status=SourceLinkStatus.PENDING,
+        fixture_id=fixture_id,
+        source=source,
+        html_path=None,
+        url=url,
+    )
+
+
 def _available_result(
     db: Database,
     fixture_id: int,
@@ -257,32 +286,52 @@ def _available_result(
     )
 
 
-def _source_link(db: Database, fixture_id: int, source: str):
+def _source_link(db: Database, fixture_id: int, source: str) -> sqlite3.Row | None:
     for link in db.list_fixture_source_links(fixture_id):
         if link["source"].lower() == source.lower():
             return link
     return None
 
 
+def _normalized_team_name_candidates(
+    db: Database,
+    team_name: str,
+    season: str,
+) -> tuple[str, ...]:
+    normalized_name = normalize_team_name(team_name)
+    candidates = [normalized_name]
+    rows = db.execute(
+        """
+        SELECT normalized_alias
+        FROM tournament_team_aliases
+        WHERE tournament = ?
+          AND season = ?
+          AND normalized_team_name = ?
+        ORDER BY id ASC
+        """,
+        (FIFA_WORLD_CUP, season, normalized_name),
+    )
+    candidates.extend(row["normalized_alias"] for row in rows)
+    return tuple(dict.fromkeys(candidates))
+
+
 def _find_listing_url(
     listing_html: str,
-    home_team: str,
-    away_team: str,
+    home_candidates: tuple[str, ...],
+    away_candidates: tuple[str, ...],
     base_url: str,
 ) -> str | None:
     parser = _AnchorParser()
     parser.feed(listing_html)
-    home_normalized = normalize_team_name(home_team)
-    away_normalized = normalize_team_name(away_team)
 
     for href, text in parser.links:
         text_normalized = normalize_team_name(text)
         href_normalized = normalize_team_name(href)
         if _contains_team_pair(
             text_normalized,
-            home_normalized,
-            away_normalized,
-        ) or _contains_team_pair(href_normalized, home_normalized, away_normalized):
+            home_candidates,
+            away_candidates,
+        ) or _contains_team_pair(href_normalized, home_candidates, away_candidates):
             return urljoin(base_url, href)
     return None
 
@@ -305,15 +354,32 @@ def _listing_fetch_status(
     return SourceLinkStatus.PENDING, ""
 
 
+def _can_parse_text_blocked_listing(
+    response: DiscoveryHttpResponse,
+    fetch_status: SourceLinkStatus,
+) -> bool:
+    return (
+        fetch_status is SourceLinkStatus.BLOCKED
+        and response.error_message is None
+        and response.status_code is not None
+        and 200 <= response.status_code < 400
+    )
+
+
 def _contains_team_pair(
     text_normalized: str,
-    home_normalized: str,
-    away_normalized: str,
+    home_candidates: tuple[str, ...],
+    away_candidates: tuple[str, ...],
 ) -> bool:
+    return _contains_any_candidate(
+        text_normalized,
+        home_candidates,
+    ) and _contains_any_candidate(text_normalized, away_candidates)
+
+
+def _contains_any_candidate(text_normalized: str, candidates: tuple[str, ...]) -> bool:
     searchable = f" {text_normalized} "
-    home_position = searchable.find(f" {home_normalized} ")
-    away_position = searchable.find(f" {away_normalized} ")
-    return home_position >= 0 and away_position >= 0 and home_position != away_position
+    return any(f" {candidate} " in searchable for candidate in candidates)
 
 
 class _AnchorParser(HTMLParser):
