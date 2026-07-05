@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
 from rich.console import Console
 import typer
@@ -20,6 +22,7 @@ from handicap_ai.resolver import MatchResolver
 from handicap_ai.settlement import settle_handicap, settle_one_x_two, settle_total
 from handicap_ai.similarity import SimilarityCandidate, SimilarityResult, find_similar_matches
 from handicap_ai.source_discovery import (
+    SourceLinkResult,
     discover_fixture_source,
     discover_fixture_source_from_listing,
     register_fixture_source_url,
@@ -30,6 +33,7 @@ from handicap_ai.world_cup_seed import import_world_cup_2026_seed
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
+T = TypeVar("T")
 
 
 @app.callback()
@@ -111,13 +115,15 @@ def register_source_url(
 ) -> None:
     database = Database(db)
     database.migrate()
-    result = register_fixture_source_url(
-        database,
-        home,
-        away,
-        source,
-        url,
-        season=season,
+    result = _run_source_action(
+        lambda: register_fixture_source_url(
+            database,
+            home,
+            away,
+            source,
+            url,
+            season=season,
+        )
     )
     _print_source_result(result)
 
@@ -135,12 +141,14 @@ def discover_sources(
     database = Database(db)
     database.migrate()
     if listing_html is None:
-        result = discover_fixture_source(
-            database,
-            home,
-            away,
-            source,
-            season=season,
+        result = _run_source_action(
+            lambda: discover_fixture_source(
+                database,
+                home,
+                away,
+                source,
+                season=season,
+            )
         )
     else:
         if base_url is None:
@@ -148,14 +156,17 @@ def discover_sources(
                 "--base-url is required with --listing-html",
                 param_hint="--base-url",
             )
-        result = discover_fixture_source_from_listing(
-            database,
-            home,
-            away,
-            source,
-            listing_html.read_text(encoding="utf-8"),
-            base_url,
-            season=season,
+        listing_text = _read_text_option(listing_html, "listing HTML")
+        result = _run_source_action(
+            lambda: discover_fixture_source_from_listing(
+                database,
+                home,
+                away,
+                source,
+                listing_text,
+                base_url,
+                season=season,
+            )
         )
     _print_source_result(result)
 
@@ -165,7 +176,7 @@ def fetch_source_html(
     home: str = typer.Option(..., "--home"),
     away: str = typer.Option(..., "--away"),
     source: str = typer.Option(..., "--source"),
-    cache_dir: Path = typer.Option(Path("data/source-cache"), "--cache-dir"),
+    cache_dir: Path = typer.Option(Path("data/cache"), "--cache-dir"),
     response_html: Path | None = typer.Option(None, "--response-html"),
     season: str = typer.Option("2026", "--season"),
     db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
@@ -173,28 +184,32 @@ def fetch_source_html(
     database = Database(db)
     database.migrate()
     if response_html is None:
-        result = fetch_fixture_source_html(
-            database,
-            home,
-            away,
-            source,
-            cache_dir,
-            season=season,
+        result = _run_source_action(
+            lambda: fetch_fixture_source_html(
+                database,
+                home,
+                away,
+                source,
+                cache_dir,
+                season=season,
+            )
         )
     else:
-        html = response_html.read_text(encoding="utf-8")
+        html = _read_text_option(response_html, "response HTML")
 
         def http_get(url: str) -> FetchHttpResponse:
             return FetchHttpResponse(url=url, status_code=200, text=html)
 
-        result = fetch_fixture_source_html(
-            database,
-            home,
-            away,
-            source,
-            cache_dir,
-            http_get=http_get,
-            season=season,
+        result = _run_source_action(
+            lambda: fetch_fixture_source_html(
+                database,
+                home,
+                away,
+                source,
+                cache_dir,
+                http_get=http_get,
+                season=season,
+            )
         )
     _print_source_result(result)
 
@@ -269,7 +284,23 @@ def ui(
     uvicorn.run(create_app(db), host=host, port=port)
 
 
-def _print_source_result(result) -> None:
+def _read_text_option(path: Path, label: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        console.print(f"Error: cannot read {label}: {path}")
+        raise typer.Exit(1) from exc
+
+
+def _run_source_action(action: Callable[[], T]) -> T:
+    try:
+        return action()
+    except ValueError as exc:
+        console.print(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+
+
+def _print_source_result(result: SourceLinkResult) -> None:
     details = [f"{result.source}: {result.status.value}"]
     if result.html_path:
         details.append(f"html={result.html_path}")
