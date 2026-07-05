@@ -86,7 +86,7 @@ def fetch_fixture_source_html(
     if status is SourceLinkStatus.PENDING or _can_parse_text_blocked_response(
         response, status
     ):
-        parse_warning = _parse_warning(source_key, response.text, fixture)
+        parse_warning = _parse_warning(source_key, response.text, fixture, db, season)
         if parse_warning is None:
             _record_source_fetch(
                 db,
@@ -174,14 +174,26 @@ def _can_parse_text_blocked_response(
     )
 
 
-def _parse_warning(source: str, html: str, fixture: sqlite3.Row) -> str | None:
+def _parse_warning(
+    source: str,
+    html: str,
+    fixture: sqlite3.Row,
+    db: Database,
+    season: str,
+) -> str | None:
     adapter = _adapter_for_source(source)
     try:
         bundle, coverage = adapter(Path("unused")).parse_html(html)
     except ValueError as error:
         return str(error)
 
-    if not _matches_fixture(bundle.match.home_team, bundle.match.away_team, fixture):
+    if not _matches_fixture(
+        bundle.match.home_team,
+        bundle.match.away_team,
+        fixture,
+        db,
+        season,
+    ):
         return (
             f"fetched match {bundle.match.home_team} vs {bundle.match.away_team} "
             f"does not match {fixture['home_team']} vs {fixture['away_team']}"
@@ -246,16 +258,47 @@ def _matches_fixture(
     parsed_home_team: str,
     parsed_away_team: str,
     fixture: sqlite3.Row,
+    db: Database,
+    season: str,
 ) -> bool:
     parsed_pair = (
         normalize_team_name(parsed_home_team),
         normalize_team_name(parsed_away_team),
     )
-    fixture_pair = (
-        normalize_team_name(fixture["home_team"]),
-        normalize_team_name(fixture["away_team"]),
+    home_candidates = _normalized_team_name_candidates(
+        db,
+        fixture["home_team"],
+        season,
     )
-    return parsed_pair == fixture_pair or parsed_pair == fixture_pair[::-1]
+    away_candidates = _normalized_team_name_candidates(
+        db,
+        fixture["away_team"],
+        season,
+    )
+    return (
+        parsed_pair[0] in home_candidates and parsed_pair[1] in away_candidates
+    ) or (parsed_pair[0] in away_candidates and parsed_pair[1] in home_candidates)
+
+
+def _normalized_team_name_candidates(
+    db: Database,
+    team_name: str,
+    season: str,
+) -> set[str]:
+    normalized_name = normalize_team_name(team_name)
+    candidates = {normalized_name}
+    rows = db.execute(
+        """
+        SELECT normalized_alias
+        FROM tournament_team_aliases
+        WHERE tournament = ?
+          AND season = ?
+          AND normalized_team_name = ?
+        """,
+        (FIFA_WORLD_CUP, season, normalized_name),
+    )
+    candidates.update(row["normalized_alias"] for row in rows)
+    return candidates
 
 
 def _available_html_path(db: Database, fixture_id: int, source: str) -> str | None:

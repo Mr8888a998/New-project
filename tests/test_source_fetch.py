@@ -45,15 +45,20 @@ def fake_get(
     return _get
 
 
-def source_link(db, source="betexplorer"):
+def source_link(
+    db,
+    source="betexplorer",
+    home_team="England",
+    away_team="Panama",
+):
     fixture = db.find_tournament_fixtures(
         "fifa_world_cup",
         "2026",
-        "England",
-        "Panama",
+        home_team,
+        away_team,
     )[0]
     links = db.list_fixture_source_links(int(fixture["fixture_id"]))
-    return next(link for link in links if link["source"] == source)
+    return next(link for link in links if link["source"] == source.lower())
 
 
 def test_fetch_fixture_source_html_caches_available_html(tmp_path):
@@ -103,6 +108,62 @@ def test_fetch_fixture_source_html_caches_oddsportal_html(tmp_path):
     assert Path(result.html_path).is_file()
     assert db.list_source_fetches("oddsportal")[0]["status_code"] == 200
     link = source_link(db, "oddsportal")
+    assert link["status"] == "available"
+    assert link["html_path"] == result.html_path
+
+
+def test_fetch_fixture_source_html_accepts_seeded_usa_alias(tmp_path):
+    db = seeded_db_without_source(tmp_path)
+    register_fixture_source_url(
+        db,
+        home_team="United States",
+        away_team="Paraguay",
+        source="betexplorer",
+        url="https://example.test/usa-paraguay",
+    )
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+    html = html.replace("England - Panama", "USA - Paraguay")
+    html = html.replace("be:england-panama", "be:usa-paraguay")
+
+    result = fetch_fixture_source_html(
+        db,
+        home_team="United States",
+        away_team="Paraguay",
+        source="betexplorer",
+        cache_dir=tmp_path / "cache",
+        http_get=fake_get(html),
+    )
+
+    assert result.status is SourceLinkStatus.AVAILABLE
+    link = source_link(db, "betexplorer", "United States", "Paraguay")
+    assert link["status"] == "available"
+    assert link["html_path"] == result.html_path
+
+
+def test_fetch_fixture_source_html_accepts_seeded_ivory_coast_alias(tmp_path):
+    db = seeded_db_without_source(tmp_path)
+    register_fixture_source_url(
+        db,
+        home_team="Ivory Coast",
+        away_team="Germany",
+        source="betexplorer",
+        url="https://example.test/cote-divoire-germany",
+    )
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+    html = html.replace("England - Panama", "Cote d'Ivoire - Germany")
+    html = html.replace("be:england-panama", "be:cote-d-ivoire-germany")
+
+    result = fetch_fixture_source_html(
+        db,
+        home_team="Ivory Coast",
+        away_team="Germany",
+        source="betexplorer",
+        cache_dir=tmp_path / "cache",
+        http_get=fake_get(html),
+    )
+
+    assert result.status is SourceLinkStatus.AVAILABLE
+    link = source_link(db, "betexplorer", "Ivory Coast", "Germany")
     assert link["status"] == "available"
     assert link["html_path"] == result.html_path
 
