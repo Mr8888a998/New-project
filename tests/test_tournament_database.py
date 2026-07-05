@@ -55,6 +55,13 @@ def test_database_upserts_tournament_fixtures_and_source_links(tmp_path):
         url=None,
         status="available",
     )
+    db.upsert_fixture_source_link(
+        fixture_id=fixture_id,
+        source="betexplorer",
+        html_path="tests/fixtures/betexplorer_match_updated.html",
+        url="https://example.com/match",
+        status="refreshed",
+    )
 
     assert second_id == fixture_id
     fixtures = db.find_tournament_fixtures(
@@ -68,7 +75,9 @@ def test_database_upserts_tournament_fixtures_and_source_links(tmp_path):
     links = db.list_fixture_source_links(fixture_id)
     assert len(links) == 1
     assert links[0]["source"] == "betexplorer"
-    assert links[0]["status"] == "available"
+    assert links[0]["html_path"] == "tests/fixtures/betexplorer_match_updated.html"
+    assert links[0]["url"] == "https://example.com/match"
+    assert links[0]["status"] == "refreshed"
 
 
 def test_database_finds_tournament_fixture_by_reverse_team_order(tmp_path):
