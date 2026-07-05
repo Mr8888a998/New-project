@@ -92,7 +92,7 @@ def test_register_fixture_source_url_rejects_unsupported_source(tmp_path):
             home_team="England",
             away_team="Ghana",
             source="unknown",
-            url="https://example.test/england-ghana",
+            url="https://www.betexplorer.com/england-ghana",
         )
 
 
@@ -186,7 +186,7 @@ def test_discover_fixture_source_from_listing_preserves_available_link_on_match(
         fixture_id=int(fixture["fixture_id"]),
         source="betexplorer",
         html_path="data/cache/betexplorer/england-ghana.html",
-        url="https://example.test/england-ghana",
+        url="https://www.betexplorer.com/england-ghana",
         status="available",
     )
     html = Path("tests/fixtures/source_listing_betexplorer.html").read_text(encoding="utf-8")
@@ -203,10 +203,10 @@ def test_discover_fixture_source_from_listing_preserves_available_link_on_match(
     persisted = source_link(db)
     assert result.status is SourceLinkStatus.AVAILABLE
     assert result.html_path == "data/cache/betexplorer/england-ghana.html"
-    assert result.url == "https://example.test/england-ghana"
+    assert result.url == "https://www.betexplorer.com/england-ghana"
     assert persisted["status"] == "available"
     assert persisted["html_path"] == "data/cache/betexplorer/england-ghana.html"
-    assert persisted["url"] == "https://example.test/england-ghana"
+    assert persisted["url"] == "https://www.betexplorer.com/england-ghana"
 
 
 def test_discover_fixture_source_from_listing_matches_seeded_usa_alias(tmp_path):
@@ -404,7 +404,7 @@ def test_discovery_no_match_preserves_pending_source_link(tmp_path):
         fixture_id=int(fixture["fixture_id"]),
         source="betexplorer",
         html_path="data/cache/betexplorer/manual.html",
-        url="https://example.test/england-ghana",
+        url="https://www.betexplorer.com/england-ghana",
         status="pending",
     )
 
@@ -418,11 +418,11 @@ def test_discovery_no_match_preserves_pending_source_link(tmp_path):
     )
 
     assert result.status is SourceLinkStatus.MANUAL_REQUIRED
-    assert result.url == "https://example.test/england-ghana"
+    assert result.url == "https://www.betexplorer.com/england-ghana"
     assert result.html_path == "data/cache/betexplorer/manual.html"
     persisted = source_link(db)
     assert persisted["status"] == "manual_required"
-    assert persisted["url"] == "https://example.test/england-ghana"
+    assert persisted["url"] == "https://www.betexplorer.com/england-ghana"
     assert persisted["html_path"] == "data/cache/betexplorer/manual.html"
 
 
@@ -450,7 +450,7 @@ def test_discovery_listing_failure_preserves_pending_source_link(
         fixture_id=int(fixture["fixture_id"]),
         source="betexplorer",
         html_path="data/cache/betexplorer/manual.html",
-        url="https://example.test/england-ghana",
+        url="https://www.betexplorer.com/england-ghana",
         status="pending",
     )
 
@@ -463,11 +463,11 @@ def test_discovery_listing_failure_preserves_pending_source_link(
     )
 
     assert result.status is expected_status
-    assert result.url == "https://example.test/england-ghana"
+    assert result.url == "https://www.betexplorer.com/england-ghana"
     assert result.html_path == "data/cache/betexplorer/manual.html"
     persisted = source_link(db)
     assert persisted["status"] == expected_status.value
-    assert persisted["url"] == "https://example.test/england-ghana"
+    assert persisted["url"] == "https://www.betexplorer.com/england-ghana"
     assert persisted["html_path"] == "data/cache/betexplorer/manual.html"
 
 
@@ -478,7 +478,7 @@ def test_discovery_failure_does_not_overwrite_available_source_link(tmp_path):
         fixture_id=int(fixture["fixture_id"]),
         source="betexplorer",
         html_path="data/cache/betexplorer/england-ghana.html",
-        url="https://example.test/england-ghana",
+        url="https://www.betexplorer.com/england-ghana",
         status="available",
     )
 
@@ -493,5 +493,5 @@ def test_discovery_failure_does_not_overwrite_available_source_link(tmp_path):
 
     assert result.status is SourceLinkStatus.AVAILABLE
     assert result.html_path == "data/cache/betexplorer/england-ghana.html"
-    assert result.url == "https://example.test/england-ghana"
+    assert result.url == "https://www.betexplorer.com/england-ghana"
     assert "No source URL found for England vs Ghana" in result.warnings

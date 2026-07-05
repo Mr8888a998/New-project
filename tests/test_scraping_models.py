@@ -53,7 +53,7 @@ def test_source_fetch_record_has_stable_success_flag():
     fetched_at = datetime(2026, 7, 5, tzinfo=timezone.utc)
     record = SourceFetchRecord(
         source="betexplorer",
-        url="https://example.test/match",
+        url="https://www.betexplorer.com/match",
         fetched_at=fetched_at,
         status_code=200,
         cache_path="data/cache/betexplorer.html",

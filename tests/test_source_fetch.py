@@ -17,7 +17,7 @@ def seeded_db(tmp_path):
         home_team="England",
         away_team="Panama",
         source="betexplorer",
-        url="https://example.test/england-panama",
+        url="https://www.betexplorer.com/england-panama",
     )
     return db
 
@@ -90,7 +90,7 @@ def test_fetch_fixture_source_html_caches_oddsportal_html(tmp_path):
         home_team="England",
         away_team="Panama",
         source="OddsPortal",
-        url="https://example.test/england-panama-oddsportal",
+        url="https://www.oddsportal.com/england-panama-oddsportal",
     )
     html = Path("tests/fixtures/oddsportal_match.html").read_text(encoding="utf-8")
 
@@ -119,7 +119,7 @@ def test_fetch_fixture_source_html_accepts_seeded_usa_alias(tmp_path):
         home_team="United States",
         away_team="Paraguay",
         source="betexplorer",
-        url="https://example.test/usa-paraguay",
+        url="https://www.betexplorer.com/usa-paraguay",
     )
     html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
     html = html.replace("England - Panama", "USA - Paraguay")
@@ -147,7 +147,7 @@ def test_fetch_fixture_source_html_accepts_seeded_ivory_coast_alias(tmp_path):
         home_team="Ivory Coast",
         away_team="Germany",
         source="betexplorer",
-        url="https://example.test/cote-divoire-germany",
+        url="https://www.betexplorer.com/cote-divoire-germany",
     )
     html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
     html = html.replace("England - Panama", "Cote d'Ivoire - Germany")
@@ -444,7 +444,7 @@ def test_fetch_fixture_source_html_rejects_unsupported_source_before_http_get(tm
         fixture_id=int(fixture["fixture_id"]),
         source="unknown",
         html_path=None,
-        url="https://example.test/england-panama",
+        url="https://www.betexplorer.com/england-panama",
         status="pending",
     )
     requested_urls = []

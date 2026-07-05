@@ -87,7 +87,7 @@ def test_find_candidates_command_prints_source_link_url(tmp_path):
         source="betexplorer",
         status="pending",
         html_path=None,
-        url="https://example.test/england-panama",
+        url="https://www.betexplorer.com/england-panama",
     )
 
     result = runner.invoke(
@@ -105,7 +105,7 @@ def test_find_candidates_command_prints_source_link_url(tmp_path):
 
     assert result.exit_code == 0
     assert "- betexplorer: pending" in result.output
-    assert "url=https://example.test/england-panama" in result.output
+    assert "url=https://www.betexplorer.com/england-panama" in result.output
 
 
 def test_find_candidates_command_prints_invalid_team(tmp_path):

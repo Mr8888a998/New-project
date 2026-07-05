@@ -179,7 +179,7 @@ def test_register_source_url_endpoint_updates_candidate(tmp_path):
             "home_team": "England",
             "away_team": "Ghana",
             "source": "betexplorer",
-            "url": "https://example.test/england-ghana",
+            "url": "https://www.betexplorer.com/england-ghana",
         },
     )
 
@@ -187,7 +187,7 @@ def test_register_source_url_endpoint_updates_candidate(tmp_path):
     body = response.json()
     assert body["source"] == "betexplorer"
     assert body["status"] == "pending"
-    assert body["url"] == "https://example.test/england-ghana"
+    assert body["url"] == "https://www.betexplorer.com/england-ghana"
     assert body["html_path"] is None
     assert body["warnings"] == []
 
@@ -202,7 +202,7 @@ def test_register_source_url_endpoint_reports_unknown_team(tmp_path):
             "home_team": "Atlantis",
             "away_team": "Ghana",
             "source": "betexplorer",
-            "url": "https://example.test/atlantis-ghana",
+            "url": "https://www.betexplorer.com/atlantis-ghana",
         },
     )
 
@@ -281,7 +281,7 @@ def test_fetch_source_html_endpoint_uses_response_html(tmp_path):
             "home_team": "England",
             "away_team": "Panama",
             "source": "betexplorer",
-            "url": "https://example.test/england-panama",
+            "url": "https://www.betexplorer.com/england-panama",
         },
     )
     html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
@@ -316,7 +316,7 @@ def test_fetch_source_html_endpoint_ignores_request_cache_dir(tmp_path):
             "home_team": "England",
             "away_team": "Panama",
             "source": "betexplorer",
-            "url": "https://example.test/england-panama",
+            "url": "https://www.betexplorer.com/england-panama",
         },
     )
     html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
@@ -355,7 +355,7 @@ def test_fetch_source_html_endpoint_returns_failed_result_on_cache_write_error(
             "home_team": "England",
             "away_team": "Panama",
             "source": "betexplorer",
-            "url": "https://example.test/england-panama",
+            "url": "https://www.betexplorer.com/england-panama",
         },
     )
     html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")

@@ -29,7 +29,7 @@ def register_source(
             "--source",
             "betexplorer",
             "--url",
-            f"https://example.test/{home.lower()}-{away.lower()}",
+            f"https://www.betexplorer.com/{home.lower()}-{away.lower()}",
         ],
     )
     assert result.exit_code == 0
@@ -57,13 +57,13 @@ def test_register_source_url_command(tmp_path):
             "--source",
             "betexplorer",
             "--url",
-            "https://example.test/england-ghana",
+            "https://www.betexplorer.com/england-ghana",
         ],
     )
 
     assert result.exit_code == 0
     assert "betexplorer: pending" in result.output
-    assert "url=https://example.test/england-ghana" in result.output
+    assert "url=https://www.betexplorer.com/england-ghana" in result.output
 
 
 def test_discover_sources_command_uses_listing_html(tmp_path):
@@ -113,7 +113,7 @@ def test_fetch_source_html_command_uses_local_response_html(tmp_path):
             "--source",
             "betexplorer",
             "--url",
-            "https://example.test/england-panama",
+            "https://www.betexplorer.com/england-panama",
         ],
     )
     assert register.exit_code == 0

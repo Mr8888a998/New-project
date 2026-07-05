@@ -9,7 +9,7 @@ def test_database_stores_source_fetch_records_idempotently(tmp_path):
     db.migrate()
     record = SourceFetchRecord(
         source="betexplorer",
-        url="https://example.test/match",
+        url="https://www.betexplorer.com/match",
         fetched_at=datetime(2026, 7, 5, tzinfo=timezone.utc),
         status_code=200,
         cache_path="data/cache/betexplorer/match.html",
@@ -33,7 +33,7 @@ def test_database_stores_source_fetch_records_without_content_hash_idempotently(
     db.migrate()
     record = SourceFetchRecord(
         source="betexplorer",
-        url="https://example.test/no-hash",
+        url="https://www.betexplorer.com/no-hash",
         fetched_at=datetime(2026, 7, 5, tzinfo=timezone.utc),
         status_code=204,
         cache_path=None,

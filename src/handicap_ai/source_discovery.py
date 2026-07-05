@@ -70,10 +70,7 @@ def validate_source_url(source: str, url: str) -> str:
         raise ValueError(f"URL host is required for {source_key}")
 
     host = parsed.hostname.lower().rstrip(".")
-    if host != "example.test" and not _host_matches_suffix(
-        host,
-        SUPPORTED_SOURCE_HOSTS[source_key],
-    ):
+    if not _host_matches_suffix(host, SUPPORTED_SOURCE_HOSTS[source_key]):
         raise ValueError(f"unsupported URL host for {source_key}: {host}")
     return candidate_url
 
