@@ -240,6 +240,32 @@ li + li {
   padding: 6px 10px;
 }
 
+.candidate-list {
+  display: grid;
+  gap: 10px;
+}
+
+.candidate-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.candidate-card span {
+  color: var(--muted);
+}
+
+#find-candidates-button {
+  background: #334155;
+}
+
+#find-candidates-button:hover,
+#find-candidates-button:focus-visible {
+  background: #1f2937;
+}
+
 @media (max-width: 900px) {
   .workspace {
     grid-template-columns: 1fr;

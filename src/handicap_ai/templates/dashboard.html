@@ -36,11 +36,12 @@
           <fieldset class="team-grid">
             <legend>Match</legend>
             <label for="home-team">Home team</label>
-            <input id="home-team" type="text" placeholder="Pending analysis" readonly>
+            <input id="home-team" type="text" value="England" autocomplete="off">
             <label for="away-team">Away team</label>
-            <input id="away-team" type="text" placeholder="Pending analysis" readonly>
+            <input id="away-team" type="text" value="Ghana" autocomplete="off">
           </fieldset>
 
+          <button id="find-candidates-button" type="button">Find candidates</button>
           <button type="submit">Analyze saved HTML</button>
           <p id="form-message" class="form-message" role="status">Ready</p>
         </form>
@@ -81,6 +82,16 @@
         </section>
 
         <section class="workspace-panels">
+          <article class="panel candidate-panel">
+            <div class="panel-heading">
+              <span class="label">Candidate confirmation</span>
+              <strong id="candidate-status">Not checked</strong>
+            </div>
+            <div id="candidate-list" class="candidate-list">
+              <p>Enter teams and find candidates.</p>
+            </div>
+          </article>
+
           <article class="panel wizard-panel">
             <div class="panel-heading">
               <span class="label">Wizard</span>
@@ -109,6 +120,7 @@
     <script>
       const form = document.querySelector("#analysis-form");
       const message = document.querySelector("#form-message");
+      const findCandidatesButton = document.querySelector("#find-candidates-button");
 
       function setText(id, value) {
         document.querySelector(id).textContent = value;
@@ -122,6 +134,77 @@
         };
       }
 
+      function renderCandidates(body) {
+        setText("#candidate-status", body.status);
+
+        const candidateList = document.querySelector("#candidate-list");
+        candidateList.replaceChildren();
+
+        for (const warning of body.warnings || []) {
+          const warningText = document.createElement("p");
+          warningText.textContent = warning;
+          candidateList.appendChild(warningText);
+        }
+
+        if (!body.candidates || body.candidates.length === 0) {
+          const emptyText = document.createElement("p");
+          emptyText.textContent = "No candidates found.";
+          candidateList.appendChild(emptyText);
+          return;
+        }
+
+        for (const candidate of body.candidates) {
+          const card = document.createElement("div");
+          card.className = "candidate-card";
+
+          const title = document.createElement("strong");
+          title.textContent = `Group ${candidate.group_name}: ${candidate.home_team} vs ${candidate.away_team}`;
+
+          const sourceNames = Object.values(candidate.sources || {})
+            .map((source) => source.source)
+            .filter(Boolean);
+          const sourceText = document.createElement("span");
+          sourceText.textContent = sourceNames.length
+            ? sourceNames.join(", ")
+            : "Saved HTML required";
+
+          card.append(title, sourceText);
+          candidateList.appendChild(card);
+        }
+      }
+
+      async function findCandidates() {
+        const homeTeam = document.querySelector("#home-team").value;
+        const awayTeam = document.querySelector("#away-team").value;
+        message.textContent = "Finding candidates";
+
+        const response = await fetch("/api/world-cup-candidates", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            home_team: homeTeam,
+            away_team: awayTeam,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Request failed: ${response.status}`);
+        }
+
+        const body = await response.json();
+        renderCandidates(body);
+        message.textContent = "Candidates checked";
+      }
+
+      findCandidatesButton.addEventListener("click", async () => {
+        try {
+          await findCandidates();
+        } catch (error) {
+          message.textContent = error.message;
+          setText("#candidate-status", "Error");
+        }
+      });
+
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const data = new FormData(form);
@@ -129,7 +212,7 @@
         setText("#source-status", data.get("source"));
 
         try {
-          const response = await fetch("/api/analyze-saved-html", {
+          const response = await fetch("/api/analyze-candidate", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({

@@ -18,6 +18,8 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "Handicap AI Analyst Workspace" in response.text
     assert "Home team" in response.text
     assert "Away team" in response.text
+    assert "Find candidates" in response.text
+    assert "Candidate confirmation" in response.text
     assert "BetExplorer" in response.text
     assert "OddsPortal" in response.text
 
