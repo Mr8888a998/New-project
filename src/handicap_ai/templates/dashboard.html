@@ -193,7 +193,9 @@
         const sourceUrlInput = document.querySelector("#source-url");
         sourceUrlInput.value = body.url || "";
 
-        document.querySelector("#html-path").value = body.html_path || "";
+        if (body.html_path) {
+          document.querySelector("#html-path").value = body.html_path;
+        }
 
         const sourceLinkList = document.querySelector("#source-link-list");
         sourceLinkList.replaceChildren();

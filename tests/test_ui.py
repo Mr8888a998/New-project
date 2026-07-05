@@ -36,6 +36,22 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "cache_dir" not in response.text
 
 
+def test_dashboard_source_result_does_not_clear_existing_html_path(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'document.querySelector("#html-path").value = body.html_path || "";' not in (
+        response.text
+    )
+    assert "if (body.html_path) {" in response.text
+    assert 'document.querySelector("#html-path").value = body.html_path;' in (
+        response.text
+    )
+
+
 def test_saved_html_analysis_endpoint_returns_recommendations(tmp_path):
     app = create_app(db_path=tmp_path / "handicap.sqlite")
     client = TestClient(app)

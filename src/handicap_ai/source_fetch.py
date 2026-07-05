@@ -16,7 +16,12 @@ from handicap_ai.adapters.oddsportal import OddsPortalHtmlAdapter
 from handicap_ai.database import Database
 from handicap_ai.names import normalize_team_name
 from handicap_ai.scraping.models import SourceFetchRecord
-from handicap_ai.source_discovery import SourceLinkResult, SourceLinkStatus
+from handicap_ai.source_discovery import (
+    SourceLinkResult,
+    SourceLinkStatus,
+    normalize_source,
+    validate_source_url,
+)
 from handicap_ai.world_cup_seed import FIFA_WORLD_CUP, SEASON_2026
 
 
@@ -64,7 +69,7 @@ def fetch_fixture_source_html(
     http_get: FetchHttpGet = default_http_get,
     season: str = SEASON_2026,
 ) -> SourceLinkResult:
-    source_key = source.lower()
+    source_key = normalize_source(source)
     fixture = _single_fixture(db, home_team, away_team, season)
     fixture_id = int(fixture["fixture_id"])
     link = _source_link(db, fixture_id, source_key)
@@ -73,7 +78,7 @@ def fetch_fixture_source_html(
             f"no registered URL for {source_key} {home_team} vs {away_team}"
         )
 
-    registered_url = str(link["url"])
+    registered_url = validate_source_url(source_key, str(link["url"]))
     response = http_get(registered_url)
     status, warning = _response_status(response)
     cached_path, content_hash = _write_cache_if_fetch_succeeded(

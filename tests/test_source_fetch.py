@@ -356,3 +356,71 @@ def test_fetch_fixture_source_html_requires_registered_url(tmp_path):
             cache_dir=tmp_path / "cache",
             http_get=fake_get(""),
         )
+
+
+def test_fetch_fixture_source_html_rejects_unsupported_source_before_http_get(tmp_path):
+    db = seeded_db_without_source(tmp_path)
+    fixture = db.find_tournament_fixtures(
+        "fifa_world_cup",
+        "2026",
+        "England",
+        "Panama",
+    )[0]
+    db.upsert_fixture_source_link(
+        fixture_id=int(fixture["fixture_id"]),
+        source="unknown",
+        html_path=None,
+        url="https://example.test/england-panama",
+        status="pending",
+    )
+    requested_urls = []
+
+    def http_get(url: str) -> FetchHttpResponse:
+        requested_urls.append(url)
+        return FetchHttpResponse(url=url, status_code=200, text="<html></html>")
+
+    with pytest.raises(ValueError, match="unsupported source: unknown"):
+        fetch_fixture_source_html(
+            db,
+            home_team="England",
+            away_team="Panama",
+            source="unknown",
+            cache_dir=tmp_path / "cache",
+            http_get=http_get,
+        )
+
+    assert requested_urls == []
+
+
+def test_fetch_fixture_source_html_rejects_off_domain_url_before_http_get(tmp_path):
+    db = seeded_db_without_source(tmp_path)
+    fixture = db.find_tournament_fixtures(
+        "fifa_world_cup",
+        "2026",
+        "England",
+        "Panama",
+    )[0]
+    db.upsert_fixture_source_link(
+        fixture_id=int(fixture["fixture_id"]),
+        source="betexplorer",
+        html_path=None,
+        url="https://example.invalid/england-panama",
+        status="pending",
+    )
+    requested_urls = []
+
+    def http_get(url: str) -> FetchHttpResponse:
+        requested_urls.append(url)
+        return FetchHttpResponse(url=url, status_code=200, text="<html></html>")
+
+    with pytest.raises(ValueError, match="unsupported URL host for betexplorer"):
+        fetch_fixture_source_html(
+            db,
+            home_team="England",
+            away_team="Panama",
+            source="betexplorer",
+            cache_dir=tmp_path / "cache",
+            http_get=http_get,
+        )
+
+    assert requested_urls == []

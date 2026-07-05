@@ -83,6 +83,32 @@ def test_register_fixture_source_url_accepts_positional_arguments(tmp_path):
     assert result.url.endswith("/england-ghana/KhgvzGjJ/")
 
 
+def test_register_fixture_source_url_rejects_unsupported_source(tmp_path):
+    db = seeded_db(tmp_path)
+
+    with pytest.raises(ValueError, match="unsupported source: unknown"):
+        register_fixture_source_url(
+            db,
+            home_team="England",
+            away_team="Ghana",
+            source="unknown",
+            url="https://example.test/england-ghana",
+        )
+
+
+def test_register_fixture_source_url_rejects_off_domain_url(tmp_path):
+    db = seeded_db(tmp_path)
+
+    with pytest.raises(ValueError, match="unsupported URL host for betexplorer"):
+        register_fixture_source_url(
+            db,
+            home_team="England",
+            away_team="Ghana",
+            source="betexplorer",
+            url="https://example.invalid/england-ghana",
+        )
+
+
 def test_discover_fixture_source_from_betexplorer_listing(tmp_path):
     db = seeded_db(tmp_path)
     html = Path("tests/fixtures/source_listing_betexplorer.html").read_text(encoding="utf-8")
@@ -115,6 +141,42 @@ def test_discover_fixture_source_from_oddsportal_listing(tmp_path):
 
     assert result.status is SourceLinkStatus.PENDING
     assert result.url == "https://www.oddsportal.com/football/world/world-championship-2026/england-ghana/"
+
+
+def test_discover_fixture_source_from_listing_rejects_unsupported_source(tmp_path):
+    db = seeded_db(tmp_path)
+
+    with pytest.raises(ValueError, match="unsupported source: unknown"):
+        discover_fixture_source_from_listing(
+            db,
+            home_team="England",
+            away_team="Ghana",
+            source="unknown",
+            listing_html="<a href='/england-ghana'>England - Ghana</a>",
+            base_url="https://www.betexplorer.com",
+        )
+
+
+def test_discover_fixture_source_from_listing_ignores_off_domain_match(tmp_path):
+    db = seeded_db(tmp_path)
+
+    result = discover_fixture_source_from_listing(
+        db,
+        home_team="England",
+        away_team="Ghana",
+        source="betexplorer",
+        listing_html=(
+            "<html><a href='https://example.invalid/england-ghana'>"
+            "England - Ghana</a></html>"
+        ),
+        base_url="https://www.betexplorer.com",
+    )
+
+    assert result.status is SourceLinkStatus.MANUAL_REQUIRED
+    assert result.url is None
+    persisted = source_link(db)
+    assert persisted["status"] == "manual_required"
+    assert persisted["url"] is None
 
 
 def test_discover_fixture_source_from_listing_preserves_available_link_on_match(tmp_path):
@@ -333,6 +395,80 @@ def test_discovery_reports_manual_required_when_no_listing_match(tmp_path):
     assert persisted["status"] == "manual_required"
     assert persisted["url"] is None
     assert persisted["html_path"] is None
+
+
+def test_discovery_no_match_preserves_pending_source_link(tmp_path):
+    db = seeded_db(tmp_path)
+    fixture = db.find_tournament_fixtures("fifa_world_cup", "2026", "England", "Ghana")[0]
+    db.upsert_fixture_source_link(
+        fixture_id=int(fixture["fixture_id"]),
+        source="betexplorer",
+        html_path="data/cache/betexplorer/manual.html",
+        url="https://example.test/england-ghana",
+        status="pending",
+    )
+
+    result = discover_fixture_source_from_listing(
+        db,
+        home_team="England",
+        away_team="Ghana",
+        source="betexplorer",
+        listing_html="<html><a href='/other'>Brazil - Morocco</a></html>",
+        base_url="https://www.betexplorer.com",
+    )
+
+    assert result.status is SourceLinkStatus.MANUAL_REQUIRED
+    assert result.url == "https://example.test/england-ghana"
+    assert result.html_path == "data/cache/betexplorer/manual.html"
+    persisted = source_link(db)
+    assert persisted["status"] == "manual_required"
+    assert persisted["url"] == "https://example.test/england-ghana"
+    assert persisted["html_path"] == "data/cache/betexplorer/manual.html"
+
+
+@pytest.mark.parametrize(
+    ("response", "expected_status"),
+    [
+        (
+            fake_listing_get("<html>captcha required</html>", status_code=403),
+            SourceLinkStatus.BLOCKED,
+        ),
+        (
+            fake_listing_get("", status_code=None, error_message="dns failed"),
+            SourceLinkStatus.FAILED,
+        ),
+    ],
+)
+def test_discovery_listing_failure_preserves_pending_source_link(
+    tmp_path,
+    response,
+    expected_status,
+):
+    db = seeded_db(tmp_path)
+    fixture = db.find_tournament_fixtures("fifa_world_cup", "2026", "England", "Ghana")[0]
+    db.upsert_fixture_source_link(
+        fixture_id=int(fixture["fixture_id"]),
+        source="betexplorer",
+        html_path="data/cache/betexplorer/manual.html",
+        url="https://example.test/england-ghana",
+        status="pending",
+    )
+
+    result = discover_fixture_source(
+        db,
+        home_team="England",
+        away_team="Ghana",
+        source="betexplorer",
+        http_get=response,
+    )
+
+    assert result.status is expected_status
+    assert result.url == "https://example.test/england-ghana"
+    assert result.html_path == "data/cache/betexplorer/manual.html"
+    persisted = source_link(db)
+    assert persisted["status"] == expected_status.value
+    assert persisted["url"] == "https://example.test/england-ghana"
+    assert persisted["html_path"] == "data/cache/betexplorer/manual.html"
 
 
 def test_discovery_failure_does_not_overwrite_available_source_link(tmp_path):

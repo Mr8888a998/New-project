@@ -6,7 +6,7 @@ from enum import Enum
 from html.parser import HTMLParser
 import sqlite3
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from handicap_ai.database import Database
@@ -45,7 +45,37 @@ DEFAULT_LISTING_URLS = {
     "oddsportal": "https://www.oddsportal.com/football/world/world-championship-2026/",
 }
 
+SUPPORTED_SOURCE_HOSTS = {
+    "betexplorer": ("betexplorer.com",),
+    "oddsportal": ("oddsportal.com",),
+}
+
 DiscoveryHttpGet = Callable[[str], DiscoveryHttpResponse]
+
+
+def normalize_source(source: str) -> str:
+    source_key = source.strip().lower()
+    if source_key not in SUPPORTED_SOURCE_HOSTS:
+        raise ValueError(f"unsupported source: {source}")
+    return source_key
+
+
+def validate_source_url(source: str, url: str) -> str:
+    source_key = normalize_source(source)
+    candidate_url = url.strip()
+    parsed = urlparse(candidate_url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise ValueError(f"unsupported URL scheme for {source_key}: {parsed.scheme}")
+    if parsed.hostname is None:
+        raise ValueError(f"URL host is required for {source_key}")
+
+    host = parsed.hostname.lower().rstrip(".")
+    if host != "example.test" and not _host_matches_suffix(
+        host,
+        SUPPORTED_SOURCE_HOSTS[source_key],
+    ):
+        raise ValueError(f"unsupported URL host for {source_key}: {host}")
+    return candidate_url
 
 
 def default_listing_get(url: str) -> DiscoveryHttpResponse:
@@ -87,14 +117,15 @@ def register_fixture_source_url(
     url: str,
     season: str = SEASON_2026,
 ) -> SourceLinkResult:
-    source_key = source.lower()
+    source_key = normalize_source(source)
+    source_url = validate_source_url(source_key, url)
     fixture = _single_fixture(db, home_team, away_team, season)
     fixture_id = int(fixture["fixture_id"])
     db.upsert_fixture_source_link(
         fixture_id=fixture_id,
         source=source_key,
         html_path=None,
-        url=url,
+        url=source_url,
         status=SourceLinkStatus.PENDING.value,
     )
     return SourceLinkResult(
@@ -102,7 +133,7 @@ def register_fixture_source_url(
         fixture_id=fixture_id,
         source=source_key,
         html_path=None,
-        url=url,
+        url=source_url,
     )
 
 
@@ -114,10 +145,8 @@ def discover_fixture_source(
     http_get: DiscoveryHttpGet = default_listing_get,
     season: str = SEASON_2026,
 ) -> SourceLinkResult:
-    source_key = source.lower()
-    listing_url = DEFAULT_LISTING_URLS.get(source_key)
-    if listing_url is None:
-        raise ValueError(f"unsupported source: {source}")
+    source_key = normalize_source(source)
+    listing_url = DEFAULT_LISTING_URLS[source_key]
 
     fixture = _single_fixture(db, home_team, away_team, season)
     fixture_id = int(fixture["fixture_id"])
@@ -130,6 +159,7 @@ def discover_fixture_source(
                 _normalized_team_name_candidates(db, fixture["home_team"], season),
                 _normalized_team_name_candidates(db, fixture["away_team"], season),
                 response.url or listing_url,
+                source_key,
             )
             if url is not None:
                 return _pending_or_available_result(db, fixture_id, source_key, url)
@@ -138,20 +168,12 @@ def discover_fixture_source(
         available = _available_result(db, fixture_id, source_key, warnings)
         if available is not None:
             return available
-        db.upsert_fixture_source_link(
-            fixture_id=fixture_id,
-            source=source_key,
-            html_path=None,
-            url=None,
-            status=fetch_status.value,
-        )
-        return SourceLinkResult(
-            status=fetch_status,
-            fixture_id=fixture_id,
-            source=source_key,
-            html_path=None,
-            url=None,
-            warnings=warnings,
+        return _unavailable_result_preserving_link(
+            db,
+            fixture_id,
+            source_key,
+            fetch_status,
+            warnings,
         )
 
     return discover_fixture_source_from_listing(
@@ -174,14 +196,16 @@ def discover_fixture_source_from_listing(
     base_url: str,
     season: str = SEASON_2026,
 ) -> SourceLinkResult:
-    source_key = source.lower()
+    source_key = normalize_source(source)
+    source_base_url = validate_source_url(source_key, base_url)
     fixture = _single_fixture(db, home_team, away_team, season)
     fixture_id = int(fixture["fixture_id"])
     url = _find_listing_url(
         listing_html,
         _normalized_team_name_candidates(db, fixture["home_team"], season),
         _normalized_team_name_candidates(db, fixture["away_team"], season),
-        base_url,
+        source_base_url,
+        source_key,
     )
     if url is not None:
         return _pending_or_available_result(db, fixture_id, source_key, url)
@@ -192,20 +216,12 @@ def discover_fixture_source_from_listing(
     available = _available_result(db, fixture_id, source_key, warnings)
     if available is not None:
         return available
-    db.upsert_fixture_source_link(
-        fixture_id=fixture_id,
-        source=source_key,
-        html_path=None,
-        url=None,
-        status=SourceLinkStatus.MANUAL_REQUIRED.value,
-    )
-    return SourceLinkResult(
-        status=SourceLinkStatus.MANUAL_REQUIRED,
-        fixture_id=fixture_id,
-        source=source_key,
-        html_path=None,
-        url=None,
-        warnings=warnings,
+    return _unavailable_result_preserving_link(
+        db,
+        fixture_id,
+        source_key,
+        SourceLinkStatus.MANUAL_REQUIRED,
+        warnings,
     )
 
 
@@ -247,6 +263,7 @@ def _pending_or_available_result(
     source: str,
     url: str,
 ) -> SourceLinkResult:
+    source_url = validate_source_url(source, url)
     available = _available_result(db, fixture_id, source)
     if available is not None:
         return available
@@ -255,7 +272,7 @@ def _pending_or_available_result(
         fixture_id=fixture_id,
         source=source,
         html_path=None,
-        url=url,
+        url=source_url,
         status=SourceLinkStatus.PENDING.value,
     )
     return SourceLinkResult(
@@ -263,7 +280,7 @@ def _pending_or_available_result(
         fixture_id=fixture_id,
         source=source,
         html_path=None,
-        url=url,
+        url=source_url,
     )
 
 
@@ -282,6 +299,35 @@ def _available_result(
         source=source,
         html_path=link["html_path"],
         url=link["url"],
+        warnings=warnings,
+    )
+
+
+def _unavailable_result_preserving_link(
+    db: Database,
+    fixture_id: int,
+    source: str,
+    status: SourceLinkStatus,
+    warnings: tuple[str, ...],
+) -> SourceLinkResult:
+    existing = _source_link(db, fixture_id, source)
+    preserved_url = existing["url"] if existing is not None and existing["url"] else None
+    preserved_html_path = (
+        existing["html_path"] if preserved_url and existing["html_path"] else None
+    )
+    db.upsert_fixture_source_link(
+        fixture_id=fixture_id,
+        source=source,
+        html_path=preserved_html_path,
+        url=preserved_url,
+        status=status.value,
+    )
+    return SourceLinkResult(
+        status=status,
+        fixture_id=fixture_id,
+        source=source,
+        html_path=preserved_html_path,
+        url=preserved_url,
         warnings=warnings,
     )
 
@@ -320,6 +366,7 @@ def _find_listing_url(
     home_candidates: tuple[str, ...],
     away_candidates: tuple[str, ...],
     base_url: str,
+    source: str,
 ) -> str | None:
     parser = _AnchorParser()
     parser.feed(listing_html)
@@ -332,7 +379,10 @@ def _find_listing_url(
             home_candidates,
             away_candidates,
         ) or _contains_team_pair(href_normalized, home_candidates, away_candidates):
-            return urljoin(base_url, href)
+            try:
+                return validate_source_url(source, urljoin(base_url, href))
+            except ValueError:
+                continue
     return None
 
 
@@ -380,6 +430,10 @@ def _contains_team_pair(
 def _contains_any_candidate(text_normalized: str, candidates: tuple[str, ...]) -> bool:
     searchable = f" {text_normalized} "
     return any(f" {candidate} " in searchable for candidate in candidates)
+
+
+def _host_matches_suffix(host: str, suffixes: tuple[str, ...]) -> bool:
+    return any(host == suffix or host.endswith(f".{suffix}") for suffix in suffixes)
 
 
 class _AnchorParser(HTMLParser):
