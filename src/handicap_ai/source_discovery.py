@@ -34,12 +34,13 @@ class SourceLinkResult:
 @dataclass(frozen=True)
 class DiscoveryHttpResponse:
     url: str
-    status_code: int
+    status_code: int | None
     text: str
+    error_message: str | None = None
 
 
 DEFAULT_LISTING_URLS = {
-    "betexplorer": "https://www.betexplorer.com/football/world/world-championship-2026/",
+    "betexplorer": "https://www.betexplorer.com/football/world/world-championship-2026/fixtures/",
     "oddsportal": "https://www.oddsportal.com/football/world/world-championship-2026/",
 }
 
@@ -69,23 +70,28 @@ def default_listing_get(url: str) -> DiscoveryHttpResponse:
         text = error.read().decode(charset or "utf-8", errors="replace")
         return DiscoveryHttpResponse(url=url, status_code=error.code, text=text)
     except URLError as error:
-        return DiscoveryHttpResponse(url=url, status_code=0, text=str(error.reason))
+        return DiscoveryHttpResponse(
+            url=url,
+            status_code=None,
+            text="",
+            error_message=str(error.reason),
+        )
 
 
 def register_fixture_source_url(
     db: Database,
-    *,
     home_team: str,
     away_team: str,
     source: str,
     url: str,
     season: str = SEASON_2026,
 ) -> SourceLinkResult:
+    source_key = source.lower()
     fixture = _single_fixture(db, home_team, away_team, season)
     fixture_id = int(fixture["fixture_id"])
     db.upsert_fixture_source_link(
         fixture_id=fixture_id,
-        source=source,
+        source=source_key,
         html_path=None,
         url=url,
         status=SourceLinkStatus.PENDING.value,
@@ -93,7 +99,7 @@ def register_fixture_source_url(
     return SourceLinkResult(
         status=SourceLinkStatus.PENDING,
         fixture_id=fixture_id,
-        source=source,
+        source=source_key,
         html_path=None,
         url=url,
     )
@@ -101,52 +107,29 @@ def register_fixture_source_url(
 
 def discover_fixture_source(
     db: Database,
-    *,
     home_team: str,
     away_team: str,
     source: str,
     http_get: DiscoveryHttpGet = default_listing_get,
     season: str = SEASON_2026,
 ) -> SourceLinkResult:
+    source_key = source.lower()
+    listing_url = DEFAULT_LISTING_URLS.get(source_key)
+    if listing_url is None:
+        raise ValueError(f"unsupported source: {source}")
+
     fixture = _single_fixture(db, home_team, away_team, season)
     fixture_id = int(fixture["fixture_id"])
-    listing_url = DEFAULT_LISTING_URLS.get(source)
-    if listing_url is None:
-        warnings = (f"No default listing URL configured for source: {source}",)
-        available = _available_result(db, fixture_id, source, warnings)
-        if available is not None:
-            return available
-        db.upsert_fixture_source_link(
-            fixture_id=fixture_id,
-            source=source,
-            html_path=None,
-            url=None,
-            status=SourceLinkStatus.MANUAL_REQUIRED.value,
-        )
-        return SourceLinkResult(
-            status=SourceLinkStatus.MANUAL_REQUIRED,
-            fixture_id=fixture_id,
-            source=source,
-            html_path=None,
-            url=None,
-            warnings=warnings,
-        )
-
     response = http_get(listing_url)
-    fetch_status = _listing_fetch_status(response)
+    fetch_status, warning = _listing_fetch_status(response)
     if fetch_status is not SourceLinkStatus.PENDING:
-        warning = (
-            f"Source listing blocked for {source}: HTTP {response.status_code}"
-            if fetch_status is SourceLinkStatus.BLOCKED
-            else f"Source listing fetch failed for {source}: HTTP {response.status_code}"
-        )
         warnings = (warning,)
-        available = _available_result(db, fixture_id, source, warnings)
+        available = _available_result(db, fixture_id, source_key, warnings)
         if available is not None:
             return available
         db.upsert_fixture_source_link(
             fixture_id=fixture_id,
-            source=source,
+            source=source_key,
             html_path=None,
             url=None,
             status=fetch_status.value,
@@ -154,7 +137,7 @@ def discover_fixture_source(
         return SourceLinkResult(
             status=fetch_status,
             fixture_id=fixture_id,
-            source=source,
+            source=source_key,
             html_path=None,
             url=None,
             warnings=warnings,
@@ -162,18 +145,17 @@ def discover_fixture_source(
 
     return discover_fixture_source_from_listing(
         db,
-        home_team=home_team,
-        away_team=away_team,
-        source=source,
-        listing_html=response.text,
-        base_url=response.url or listing_url,
+        home_team,
+        away_team,
+        source_key,
+        response.text,
+        response.url or listing_url,
         season=season,
     )
 
 
 def discover_fixture_source_from_listing(
     db: Database,
-    *,
     home_team: str,
     away_team: str,
     source: str,
@@ -181,18 +163,19 @@ def discover_fixture_source_from_listing(
     base_url: str,
     season: str = SEASON_2026,
 ) -> SourceLinkResult:
+    source_key = source.lower()
     fixture = _single_fixture(db, home_team, away_team, season)
     fixture_id = int(fixture["fixture_id"])
     url = _find_listing_url(
         listing_html,
-        home_team=fixture["home_team"],
-        away_team=fixture["away_team"],
-        base_url=base_url,
+        fixture["home_team"],
+        fixture["away_team"],
+        base_url,
     )
     if url is not None:
         db.upsert_fixture_source_link(
             fixture_id=fixture_id,
-            source=source,
+            source=source_key,
             html_path=None,
             url=url,
             status=SourceLinkStatus.PENDING.value,
@@ -200,7 +183,7 @@ def discover_fixture_source_from_listing(
         return SourceLinkResult(
             status=SourceLinkStatus.PENDING,
             fixture_id=fixture_id,
-            source=source,
+            source=source_key,
             html_path=None,
             url=url,
         )
@@ -208,12 +191,12 @@ def discover_fixture_source_from_listing(
     warnings = (
         f"No source URL found for {fixture['home_team']} vs {fixture['away_team']}",
     )
-    available = _available_result(db, fixture_id, source, warnings)
+    available = _available_result(db, fixture_id, source_key, warnings)
     if available is not None:
         return available
     db.upsert_fixture_source_link(
         fixture_id=fixture_id,
-        source=source,
+        source=source_key,
         html_path=None,
         url=None,
         status=SourceLinkStatus.MANUAL_REQUIRED.value,
@@ -221,7 +204,7 @@ def discover_fixture_source_from_listing(
     return SourceLinkResult(
         status=SourceLinkStatus.MANUAL_REQUIRED,
         fixture_id=fixture_id,
-        source=source,
+        source=source_key,
         html_path=None,
         url=None,
         warnings=warnings,
@@ -276,14 +259,13 @@ def _available_result(
 
 def _source_link(db: Database, fixture_id: int, source: str):
     for link in db.list_fixture_source_links(fixture_id):
-        if link["source"] == source:
+        if link["source"].lower() == source.lower():
             return link
     return None
 
 
 def _find_listing_url(
     listing_html: str,
-    *,
     home_team: str,
     away_team: str,
     base_url: str,
@@ -305,15 +287,22 @@ def _find_listing_url(
     return None
 
 
-def _listing_fetch_status(response: DiscoveryHttpResponse) -> SourceLinkStatus:
-    text = response.text.lower()
-    if response.status_code in {401, 403, 429}:
-        return SourceLinkStatus.BLOCKED
-    if "captcha" in text or "access denied" in text or "blocked" in text:
-        return SourceLinkStatus.BLOCKED
-    if response.status_code < 200 or response.status_code >= 400:
-        return SourceLinkStatus.FAILED
-    return SourceLinkStatus.PENDING
+def _listing_fetch_status(
+    response: DiscoveryHttpResponse,
+) -> tuple[SourceLinkStatus, str]:
+    if response.error_message:
+        return SourceLinkStatus.FAILED, response.error_message
+    if response.status_code in {401, 402, 403, 429}:
+        return SourceLinkStatus.BLOCKED, "listing fetch blocked by source"
+    lowered = response.text.lower()
+    if "captcha" in lowered or "access denied" in lowered or "login" in lowered:
+        return SourceLinkStatus.BLOCKED, "listing fetch blocked by source"
+    if response.status_code is None or response.status_code >= 400:
+        return (
+            SourceLinkStatus.FAILED,
+            f"listing fetch failed with status {response.status_code}",
+        )
+    return SourceLinkStatus.PENDING, ""
 
 
 def _contains_team_pair(

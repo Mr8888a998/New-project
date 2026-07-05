@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from handicap_ai.database import Database
 from handicap_ai.source_discovery import (
     DiscoveryHttpResponse,
@@ -18,9 +20,18 @@ def seeded_db(tmp_path):
     return db
 
 
-def fake_listing_get(html: str, status_code: int = 200):
+def fake_listing_get(
+    html: str,
+    status_code: int | None = 200,
+    error_message: str | None = None,
+):
     def _get(url: str) -> DiscoveryHttpResponse:
-        return DiscoveryHttpResponse(url=url, status_code=status_code, text=html)
+        return DiscoveryHttpResponse(
+            url=url,
+            status_code=status_code,
+            text=html,
+            error_message=error_message,
+        )
 
     return _get
 
@@ -46,17 +57,32 @@ def test_register_fixture_source_url_updates_candidate_link(tmp_path):
     assert links[0]["html_path"] is None
 
 
+def test_register_fixture_source_url_accepts_positional_arguments(tmp_path):
+    db = seeded_db(tmp_path)
+
+    result = register_fixture_source_url(
+        db,
+        "England",
+        "Ghana",
+        "betexplorer",
+        "https://www.betexplorer.com/football/world/world-championship-2026/england-ghana/KhgvzGjJ/",
+    )
+
+    assert result.status is SourceLinkStatus.PENDING
+    assert result.url.endswith("/england-ghana/KhgvzGjJ/")
+
+
 def test_discover_fixture_source_from_betexplorer_listing(tmp_path):
     db = seeded_db(tmp_path)
     html = Path("tests/fixtures/source_listing_betexplorer.html").read_text(encoding="utf-8")
 
     result = discover_fixture_source_from_listing(
         db,
-        home_team="England",
-        away_team="Ghana",
-        source="betexplorer",
-        listing_html=html,
-        base_url="https://www.betexplorer.com",
+        "England",
+        "Ghana",
+        "betexplorer",
+        html,
+        "https://www.betexplorer.com",
     )
 
     assert result.status is SourceLinkStatus.PENDING
@@ -83,16 +109,21 @@ def test_discover_fixture_source_from_oddsportal_listing(tmp_path):
 def test_discover_fixture_source_fetches_default_listing(tmp_path):
     db = seeded_db(tmp_path)
     html = Path("tests/fixtures/source_listing_betexplorer.html").read_text(encoding="utf-8")
+    requested_urls = []
+
+    def http_get(url: str) -> DiscoveryHttpResponse:
+        requested_urls.append(url)
+        return DiscoveryHttpResponse(url=url, status_code=200, text=html)
 
     result = discover_fixture_source(
-        db,
-        home_team="England",
-        away_team="Ghana",
-        source="betexplorer",
-        http_get=fake_listing_get(html),
+        db, "England", "Ghana", "BetExplorer", http_get
     )
 
     assert result.status is SourceLinkStatus.PENDING
+    assert result.source == "betexplorer"
+    assert requested_urls == [
+        "https://www.betexplorer.com/football/world/world-championship-2026/fixtures/"
+    ]
     assert result.url == "https://www.betexplorer.com/football/world/world-championship-2026/england-ghana/KhgvzGjJ/"
 
 
@@ -110,6 +141,67 @@ def test_discover_fixture_source_marks_blocked_when_listing_blocked(tmp_path):
     assert result.status is SourceLinkStatus.BLOCKED
     assert result.url is None
     assert "blocked" in result.warnings[0]
+
+
+def test_discover_fixture_source_marks_402_listing_as_blocked(tmp_path):
+    db = seeded_db(tmp_path)
+
+    result = discover_fixture_source(
+        db,
+        home_team="England",
+        away_team="Ghana",
+        source="betexplorer",
+        http_get=fake_listing_get("<html>payment required</html>", status_code=402),
+    )
+
+    assert result.status is SourceLinkStatus.BLOCKED
+    assert result.url is None
+    assert result.warnings == ("listing fetch blocked by source",)
+
+
+def test_discover_fixture_source_marks_login_listing_as_blocked(tmp_path):
+    db = seeded_db(tmp_path)
+
+    result = discover_fixture_source(
+        db,
+        home_team="England",
+        away_team="Ghana",
+        source="betexplorer",
+        http_get=fake_listing_get("<html>login required</html>"),
+    )
+
+    assert result.status is SourceLinkStatus.BLOCKED
+    assert result.url is None
+    assert result.warnings == ("listing fetch blocked by source",)
+
+
+def test_discover_fixture_source_reports_http_error_message_as_failed(tmp_path):
+    db = seeded_db(tmp_path)
+
+    result = discover_fixture_source(
+        db,
+        home_team="England",
+        away_team="Ghana",
+        source="betexplorer",
+        http_get=fake_listing_get("", status_code=None, error_message="dns failed"),
+    )
+
+    assert result.status is SourceLinkStatus.FAILED
+    assert result.url is None
+    assert result.warnings == ("dns failed",)
+
+
+def test_discover_fixture_source_rejects_unsupported_source(tmp_path):
+    db = seeded_db(tmp_path)
+
+    with pytest.raises(ValueError, match="unsupported source: unknown"):
+        discover_fixture_source(
+            db,
+            home_team="England",
+            away_team="Ghana",
+            source="unknown",
+            http_get=fake_listing_get(""),
+        )
 
 
 def test_discovery_reports_manual_required_when_no_listing_match(tmp_path):
