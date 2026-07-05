@@ -4,6 +4,7 @@ from pathlib import Path
 
 from rich.console import Console
 import typer
+import uvicorn
 
 from handicap_ai.adapters.football_data import FootballDataCsvAdapter
 from handicap_ai.database import Database
@@ -17,6 +18,7 @@ from handicap_ai.report import render_text_report
 from handicap_ai.resolver import MatchResolver
 from handicap_ai.settlement import settle_handicap, settle_one_x_two, settle_total
 from handicap_ai.similarity import SimilarityCandidate, SimilarityResult, find_similar_matches
+from handicap_ai.ui import create_app
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -103,6 +105,18 @@ def scrape_match(
             result.report,
         )
     )
+
+
+@app.command("ui")
+def ui(
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    console.print(f"Starting Handicap AI UI at http://{host}:{port}")
+    uvicorn.run(create_app(db), host=host, port=port)
 
 
 def _similar_matches(database: Database, match_id: int, features):
