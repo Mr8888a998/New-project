@@ -19,6 +19,12 @@ from handicap_ai.report import render_text_report
 from handicap_ai.resolver import MatchResolver
 from handicap_ai.settlement import settle_handicap, settle_one_x_two, settle_total
 from handicap_ai.similarity import SimilarityCandidate, SimilarityResult, find_similar_matches
+from handicap_ai.source_discovery import (
+    discover_fixture_source,
+    discover_fixture_source_from_listing,
+    register_fixture_source_url,
+)
+from handicap_ai.source_fetch import FetchHttpResponse, fetch_fixture_source_html
 from handicap_ai.ui import create_app
 from handicap_ai.world_cup_seed import import_world_cup_2026_seed
 
@@ -94,6 +100,105 @@ def find_candidates(
             console.print("- saved HTML required")
 
 
+@app.command("register-source-url")
+def register_source_url(
+    home: str = typer.Option(..., "--home"),
+    away: str = typer.Option(..., "--away"),
+    source: str = typer.Option(..., "--source"),
+    url: str = typer.Option(..., "--url"),
+    season: str = typer.Option("2026", "--season"),
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    result = register_fixture_source_url(
+        database,
+        home,
+        away,
+        source,
+        url,
+        season=season,
+    )
+    _print_source_result(result)
+
+
+@app.command("discover-sources")
+def discover_sources(
+    home: str = typer.Option(..., "--home"),
+    away: str = typer.Option(..., "--away"),
+    source: str = typer.Option(..., "--source"),
+    listing_html: Path | None = typer.Option(None, "--listing-html"),
+    base_url: str | None = typer.Option(None, "--base-url"),
+    season: str = typer.Option("2026", "--season"),
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    if listing_html is None:
+        result = discover_fixture_source(
+            database,
+            home,
+            away,
+            source,
+            season=season,
+        )
+    else:
+        if base_url is None:
+            raise typer.BadParameter(
+                "--base-url is required with --listing-html",
+                param_hint="--base-url",
+            )
+        result = discover_fixture_source_from_listing(
+            database,
+            home,
+            away,
+            source,
+            listing_html.read_text(encoding="utf-8"),
+            base_url,
+            season=season,
+        )
+    _print_source_result(result)
+
+
+@app.command("fetch-source-html")
+def fetch_source_html(
+    home: str = typer.Option(..., "--home"),
+    away: str = typer.Option(..., "--away"),
+    source: str = typer.Option(..., "--source"),
+    cache_dir: Path = typer.Option(Path("data/source-cache"), "--cache-dir"),
+    response_html: Path | None = typer.Option(None, "--response-html"),
+    season: str = typer.Option("2026", "--season"),
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    if response_html is None:
+        result = fetch_fixture_source_html(
+            database,
+            home,
+            away,
+            source,
+            cache_dir,
+            season=season,
+        )
+    else:
+        html = response_html.read_text(encoding="utf-8")
+
+        def http_get(url: str) -> FetchHttpResponse:
+            return FetchHttpResponse(url=url, status_code=200, text=html)
+
+        result = fetch_fixture_source_html(
+            database,
+            home,
+            away,
+            source,
+            cache_dir,
+            http_get=http_get,
+            season=season,
+        )
+    _print_source_result(result)
+
+
 @app.command("analyze")
 def analyze(
     home: str = typer.Option(..., "--home"),
@@ -162,6 +267,17 @@ def ui(
     database.migrate()
     console.print(f"Starting Handicap AI UI at http://{host}:{port}")
     uvicorn.run(create_app(db), host=host, port=port)
+
+
+def _print_source_result(result) -> None:
+    details = [f"{result.source}: {result.status.value}"]
+    if result.html_path:
+        details.append(f"html={result.html_path}")
+    if result.url:
+        details.append(f"url={result.url}")
+    console.print(" ".join(details), soft_wrap=True)
+    for warning in result.warnings:
+        console.print(f"Warning: {warning}")
 
 
 def _similar_matches(database: Database, match_id: int, features):
