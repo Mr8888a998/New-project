@@ -23,7 +23,7 @@ class SeedFixture:
     group_name: str
     home_team: str
     away_team: str
-    kickoff_time: None = None
+    kickoff_time: str | None = None
     status: str = "scheduled"
 
 

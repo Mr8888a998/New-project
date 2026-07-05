@@ -38,7 +38,25 @@ def test_world_cup_seed_import_is_idempotent(tmp_path):
     import_world_cup_2026_seed(db)
 
     teams = db.list_tournament_teams(FIFA_WORLD_CUP, "2026")
+    fixtures_count = db.execute(
+        """
+        SELECT COUNT(*) AS count
+        FROM tournament_fixtures
+        WHERE tournament = ? AND season = ?
+        """,
+        (FIFA_WORLD_CUP, "2026"),
+    )[0]["count"]
+    aliases_count = db.execute(
+        """
+        SELECT COUNT(*) AS count
+        FROM tournament_team_aliases
+        WHERE tournament = ? AND season = ?
+        """,
+        (FIFA_WORLD_CUP, "2026"),
+    )[0]["count"]
     assert len(teams) == 48
+    assert fixtures_count == 72
+    assert aliases_count == 9
 
 
 def test_world_cup_seed_imports_group_stage_fixtures(tmp_path):
