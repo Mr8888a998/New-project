@@ -71,6 +71,31 @@ def test_database_upserts_tournament_fixtures_and_source_links(tmp_path):
     assert links[0]["status"] == "available"
 
 
+def test_database_finds_tournament_fixture_by_reverse_team_order(tmp_path):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+
+    fixture_id = db.upsert_tournament_fixture(
+        tournament="fifa_world_cup",
+        season="2026",
+        group_name="L",
+        home_team="England",
+        away_team="Ghana",
+        kickoff_time=None,
+        status="scheduled",
+    )
+
+    fixtures = db.find_tournament_fixtures(
+        tournament="fifa_world_cup",
+        season="2026",
+        home_team="Ghana",
+        away_team="England",
+    )
+
+    assert len(fixtures) == 1
+    assert fixtures[0]["fixture_id"] == fixture_id
+
+
 def test_database_stores_team_aliases(tmp_path):
     db = Database(tmp_path / "handicap.sqlite")
     db.migrate()

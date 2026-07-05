@@ -518,21 +518,27 @@ class Database:
         home_team: str,
         away_team: str,
     ) -> list[sqlite3.Row]:
+        home_normalized = normalize_team_name(home_team)
+        away_normalized = normalize_team_name(away_team)
         return self.execute(
             """
             SELECT *
             FROM tournament_fixtures
             WHERE tournament = ?
               AND season = ?
-              AND home_normalized = ?
-              AND away_normalized = ?
+              AND (
+                (home_normalized = ? AND away_normalized = ?)
+                OR (home_normalized = ? AND away_normalized = ?)
+              )
             ORDER BY kickoff_time DESC, fixture_id DESC
             """,
             (
                 tournament,
                 season,
-                normalize_team_name(home_team),
-                normalize_team_name(away_team),
+                home_normalized,
+                away_normalized,
+                away_normalized,
+                home_normalized,
             ),
         )
 
