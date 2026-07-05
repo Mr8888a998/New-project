@@ -105,8 +105,13 @@ def world_cup_2026_fixtures() -> tuple[SeedFixture, ...]:
     return tuple(fixtures)
 
 
-def import_world_cup_2026_seed(db: Database) -> WorldCupSeedSummary:
+def import_world_cup_2026_seed(
+    db: Database,
+    *,
+    overwrite_existing: bool = True,
+) -> WorldCupSeedSummary:
     alias_count = 0
+    fixture_count = 0
     fixtures = world_cup_2026_fixtures()
 
     for team in WORLD_CUP_2026_GROUPS:
@@ -127,6 +132,13 @@ def import_world_cup_2026_seed(db: Database) -> WorldCupSeedSummary:
             alias_count += 1
 
     for fixture in fixtures:
+        if not overwrite_existing and db.find_tournament_fixtures(
+            FIFA_WORLD_CUP,
+            SEASON_2026,
+            fixture.home_team,
+            fixture.away_team,
+        ):
+            continue
         db.upsert_tournament_fixture(
             tournament=FIFA_WORLD_CUP,
             season=SEASON_2026,
@@ -136,9 +148,10 @@ def import_world_cup_2026_seed(db: Database) -> WorldCupSeedSummary:
             kickoff_time=fixture.kickoff_time,
             status=fixture.status,
         )
+        fixture_count += 1
 
     return WorldCupSeedSummary(
         teams_imported=len(WORLD_CUP_2026_GROUPS),
-        fixtures_imported=len(fixtures),
+        fixtures_imported=fixture_count,
         aliases_imported=alias_count,
     )

@@ -9,9 +9,9 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.requests import Request
 
-from handicap_ai.candidate_search import find_world_cup_candidates
+from handicap_ai.candidate_search import FixtureCandidate, find_world_cup_candidates
 from handicap_ai.database import Database
-from handicap_ai.live_analysis import analyze_saved_html
+from handicap_ai.live_analysis import LiveAnalysisResult, analyze_saved_html
 from handicap_ai.world_cup_seed import import_world_cup_2026_seed
 
 
@@ -34,7 +34,7 @@ class CandidateAnalysisRequest(BaseModel):
     html_path: str
 
 
-def _report_payload(result):
+def _report_payload(result: LiveAnalysisResult) -> dict[str, object]:
     return {
         "match": f"{result.match['home_team']} vs {result.match['away_team']}",
         "coverage": "complete" if result.coverage.is_complete else "incomplete",
@@ -54,7 +54,7 @@ def _report_payload(result):
     }
 
 
-def _candidate_payload(candidate):
+def _candidate_payload(candidate: FixtureCandidate) -> dict[str, object]:
     return {
         "fixture_id": candidate.fixture_id,
         "group_name": candidate.group_name,
@@ -78,7 +78,7 @@ def create_app(db_path: Path) -> FastAPI:
     app = FastAPI(title="Handicap AI")
     database = Database(db_path)
     database.migrate()
-    import_world_cup_2026_seed(database)
+    import_world_cup_2026_seed(database, overwrite_existing=False)
     static_dir = PACKAGE_DIR / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 

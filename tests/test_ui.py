@@ -3,7 +3,9 @@ import tomllib
 
 from fastapi.testclient import TestClient
 
+from handicap_ai.database import Database
 from handicap_ai.ui import create_app
+from handicap_ai.world_cup_seed import FIFA_WORLD_CUP, import_world_cup_2026_seed
 
 
 def test_dashboard_route_renders_workspace(tmp_path):
@@ -90,6 +92,33 @@ def test_candidate_analysis_endpoint_accepts_saved_html(tmp_path):
     body = response.json()
     assert body["match"] == "England vs Panama"
     assert body["coverage"] == "complete"
+
+
+def test_create_app_preserves_enriched_seed_fixture_metadata(tmp_path):
+    db_path = tmp_path / "handicap.sqlite"
+    db = Database(db_path)
+    db.migrate()
+    import_world_cup_2026_seed(db)
+    db.upsert_tournament_fixture(
+        tournament=FIFA_WORLD_CUP,
+        season="2026",
+        group_name="L",
+        home_team="England",
+        away_team="Ghana",
+        kickoff_time="2026-06-20T12:00:00Z",
+        status="confirmed",
+    )
+
+    create_app(db_path=db_path)
+
+    england_ghana = db.find_tournament_fixtures(
+        tournament=FIFA_WORLD_CUP,
+        season="2026",
+        home_team="England",
+        away_team="Ghana",
+    )
+    assert england_ghana[0]["kickoff_time"] == "2026-06-20T12:00:00Z"
+    assert england_ghana[0]["status"] == "confirmed"
 
 
 def test_dashboard_static_asset_is_served(tmp_path):
