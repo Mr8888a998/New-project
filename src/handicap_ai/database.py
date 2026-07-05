@@ -152,6 +152,59 @@ CREATE TABLE IF NOT EXISTS scrape_jobs (
   warnings TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS tournament_teams (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tournament TEXT NOT NULL,
+  season TEXT NOT NULL,
+  group_name TEXT NOT NULL,
+  team_name TEXT NOT NULL,
+  normalized_name TEXT NOT NULL,
+  country TEXT,
+  UNIQUE(tournament, season, normalized_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tournament_teams_group
+ON tournament_teams(tournament, season, group_name, team_name);
+
+CREATE TABLE IF NOT EXISTS tournament_team_aliases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tournament TEXT NOT NULL,
+  season TEXT NOT NULL,
+  team_name TEXT NOT NULL,
+  normalized_team_name TEXT NOT NULL,
+  alias TEXT NOT NULL,
+  normalized_alias TEXT NOT NULL,
+  UNIQUE(tournament, season, normalized_alias)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_fixtures (
+  fixture_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tournament TEXT NOT NULL,
+  season TEXT NOT NULL,
+  group_name TEXT NOT NULL,
+  home_team TEXT NOT NULL,
+  away_team TEXT NOT NULL,
+  home_normalized TEXT NOT NULL,
+  away_normalized TEXT NOT NULL,
+  kickoff_time TEXT,
+  status TEXT NOT NULL,
+  UNIQUE(tournament, season, home_normalized, away_normalized)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tournament_fixtures_lookup
+ON tournament_fixtures(tournament, season, home_normalized, away_normalized);
+
+CREATE TABLE IF NOT EXISTS fixture_source_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fixture_id INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  html_path TEXT,
+  url TEXT,
+  status TEXT NOT NULL,
+  UNIQUE(fixture_id, source),
+  FOREIGN KEY(fixture_id) REFERENCES tournament_fixtures(fixture_id)
+);
 """
 
 
@@ -271,6 +324,256 @@ class Database:
         if not rows:
             raise ValueError(f"scrape job not found: {job_id}")
         return rows[0]
+
+    def upsert_tournament_team(
+        self,
+        tournament: str,
+        season: str,
+        group_name: str,
+        team_name: str,
+        country: str | None,
+    ) -> None:
+        with closing(self.connect()) as conn:
+            conn.execute(
+                """
+                INSERT INTO tournament_teams (
+                  tournament,
+                  season,
+                  group_name,
+                  team_name,
+                  normalized_name,
+                  country
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tournament, season, normalized_name) DO UPDATE SET
+                  group_name = excluded.group_name,
+                  team_name = excluded.team_name,
+                  country = excluded.country
+                """,
+                (
+                    tournament,
+                    season,
+                    group_name,
+                    team_name,
+                    normalize_team_name(team_name),
+                    country,
+                ),
+            )
+            conn.commit()
+
+    def list_tournament_teams(
+        self,
+        tournament: str,
+        season: str,
+    ) -> list[sqlite3.Row]:
+        return self.execute(
+            """
+            SELECT *
+            FROM tournament_teams
+            WHERE tournament = ? AND season = ?
+            ORDER BY group_name ASC, team_name ASC, id ASC
+            """,
+            (tournament, season),
+        )
+
+    def upsert_tournament_team_alias(
+        self,
+        tournament: str,
+        season: str,
+        team_name: str,
+        alias: str,
+    ) -> None:
+        with closing(self.connect()) as conn:
+            conn.execute(
+                """
+                INSERT INTO tournament_team_aliases (
+                  tournament,
+                  season,
+                  team_name,
+                  normalized_team_name,
+                  alias,
+                  normalized_alias
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tournament, season, normalized_alias) DO UPDATE SET
+                  team_name = excluded.team_name,
+                  normalized_team_name = excluded.normalized_team_name,
+                  alias = excluded.alias
+                """,
+                (
+                    tournament,
+                    season,
+                    team_name,
+                    normalize_team_name(team_name),
+                    alias,
+                    normalize_team_name(alias),
+                ),
+            )
+            conn.commit()
+
+    def resolve_tournament_team(
+        self,
+        tournament: str,
+        season: str,
+        name: str,
+    ) -> sqlite3.Row | None:
+        normalized_name = normalize_team_name(name)
+        direct_rows = self.execute(
+            """
+            SELECT *
+            FROM tournament_teams
+            WHERE tournament = ? AND season = ? AND normalized_name = ?
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (tournament, season, normalized_name),
+        )
+        if direct_rows:
+            return direct_rows[0]
+
+        alias_rows = self.execute(
+            """
+            SELECT tournament_teams.*
+            FROM tournament_team_aliases
+            JOIN tournament_teams
+              ON tournament_teams.tournament = tournament_team_aliases.tournament
+             AND tournament_teams.season = tournament_team_aliases.season
+             AND tournament_teams.normalized_name =
+                 tournament_team_aliases.normalized_team_name
+            WHERE tournament_team_aliases.tournament = ?
+              AND tournament_team_aliases.season = ?
+              AND tournament_team_aliases.normalized_alias = ?
+            ORDER BY tournament_teams.id ASC
+            LIMIT 1
+            """,
+            (tournament, season, normalized_name),
+        )
+        return alias_rows[0] if alias_rows else None
+
+    def upsert_tournament_fixture(
+        self,
+        tournament: str,
+        season: str,
+        group_name: str,
+        home_team: str,
+        away_team: str,
+        kickoff_time: str | None,
+        status: str,
+    ) -> int:
+        home_normalized = normalize_team_name(home_team)
+        away_normalized = normalize_team_name(away_team)
+        with closing(self.connect()) as conn:
+            conn.execute(
+                """
+                INSERT INTO tournament_fixtures (
+                  tournament,
+                  season,
+                  group_name,
+                  home_team,
+                  away_team,
+                  home_normalized,
+                  away_normalized,
+                  kickoff_time,
+                  status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tournament, season, home_normalized, away_normalized)
+                DO UPDATE SET
+                  group_name = excluded.group_name,
+                  home_team = excluded.home_team,
+                  away_team = excluded.away_team,
+                  kickoff_time = excluded.kickoff_time,
+                  status = excluded.status
+                """,
+                (
+                    tournament,
+                    season,
+                    group_name,
+                    home_team,
+                    away_team,
+                    home_normalized,
+                    away_normalized,
+                    kickoff_time,
+                    status,
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT fixture_id
+                FROM tournament_fixtures
+                WHERE tournament = ?
+                  AND season = ?
+                  AND home_normalized = ?
+                  AND away_normalized = ?
+                """,
+                (tournament, season, home_normalized, away_normalized),
+            ).fetchone()
+            conn.commit()
+            return int(row["fixture_id"])
+
+    def find_tournament_fixtures(
+        self,
+        tournament: str,
+        season: str,
+        home_team: str,
+        away_team: str,
+    ) -> list[sqlite3.Row]:
+        return self.execute(
+            """
+            SELECT *
+            FROM tournament_fixtures
+            WHERE tournament = ?
+              AND season = ?
+              AND home_normalized = ?
+              AND away_normalized = ?
+            ORDER BY kickoff_time DESC, fixture_id DESC
+            """,
+            (
+                tournament,
+                season,
+                normalize_team_name(home_team),
+                normalize_team_name(away_team),
+            ),
+        )
+
+    def upsert_fixture_source_link(
+        self,
+        fixture_id: int,
+        source: str,
+        html_path: str | None,
+        url: str | None,
+        status: str,
+    ) -> None:
+        with closing(self.connect()) as conn:
+            conn.execute(
+                """
+                INSERT INTO fixture_source_links (
+                  fixture_id,
+                  source,
+                  html_path,
+                  url,
+                  status
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(fixture_id, source) DO UPDATE SET
+                  html_path = excluded.html_path,
+                  url = excluded.url,
+                  status = excluded.status
+                """,
+                (fixture_id, source, html_path, url, status),
+            )
+            conn.commit()
+
+    def list_fixture_source_links(self, fixture_id: int) -> list[sqlite3.Row]:
+        return self.execute(
+            """
+            SELECT *
+            FROM fixture_source_links
+            WHERE fixture_id = ?
+            ORDER BY source ASC, id ASC
+            """,
+            (fixture_id,),
+        )
 
     def upsert_team(self, team: TeamRecord) -> None:
         with closing(self.connect()) as conn:
