@@ -1,3 +1,5 @@
+import pytest
+
 from handicap_ai.candidate_search import CandidateStatus, find_world_cup_candidates
 from handicap_ai.database import Database
 from handicap_ai.world_cup_seed import import_world_cup_2026_seed
@@ -8,6 +10,29 @@ def seeded_db(tmp_path):
     db.migrate()
     import_world_cup_2026_seed(db)
     return db
+
+
+def add_fixture_source_link(
+    db,
+    *,
+    home_team="England",
+    away_team="Panama",
+    html_path,
+    status,
+):
+    fixture = db.find_tournament_fixtures(
+        "fifa_world_cup",
+        "2026",
+        home_team,
+        away_team,
+    )[0]
+    db.upsert_fixture_source_link(
+        fixture_id=int(fixture["fixture_id"]),
+        source="betexplorer",
+        html_path=html_path,
+        url=None,
+        status=status,
+    )
 
 
 def test_candidate_search_finds_group_l_fixture(tmp_path):
@@ -64,17 +89,9 @@ def test_candidate_search_reports_not_in_group_stage(tmp_path):
 
 def test_candidate_search_marks_ready_when_source_link_exists(tmp_path):
     db = seeded_db(tmp_path)
-    fixture = db.find_tournament_fixtures(
-        "fifa_world_cup",
-        "2026",
-        "England",
-        "Panama",
-    )[0]
-    db.upsert_fixture_source_link(
-        fixture_id=int(fixture["fixture_id"]),
-        source="betexplorer",
+    add_fixture_source_link(
+        db,
         html_path="tests/fixtures/betexplorer_match.html",
-        url=None,
         status="available",
     )
 
@@ -85,6 +102,60 @@ def test_candidate_search_marks_ready_when_source_link_exists(tmp_path):
         result.candidates[0].sources["betexplorer"].html_path
         == "tests/fixtures/betexplorer_match.html"
     )
+
+
+def test_candidate_search_needs_html_when_available_path_is_missing(tmp_path):
+    db = seeded_db(tmp_path)
+    add_fixture_source_link(
+        db,
+        html_path="tests/fixtures/missing_match.html",
+        status="available",
+    )
+
+    result = find_world_cup_candidates(db, home_team="England", away_team="Panama")
+
+    assert result.status is CandidateStatus.NEEDS_HTML
+
+
+@pytest.mark.parametrize("html_path", ["", None])
+def test_candidate_search_needs_html_when_available_path_is_blank(tmp_path, html_path):
+    db = seeded_db(tmp_path)
+    add_fixture_source_link(db, html_path=html_path, status="available")
+
+    result = find_world_cup_candidates(db, home_team="England", away_team="Panama")
+
+    assert result.status is CandidateStatus.NEEDS_HTML
+
+
+def test_candidate_search_needs_html_when_existing_path_is_not_available(tmp_path):
+    db = seeded_db(tmp_path)
+    add_fixture_source_link(
+        db,
+        html_path="tests/fixtures/betexplorer_match.html",
+        status="pending",
+    )
+
+    result = find_world_cup_candidates(db, home_team="England", away_team="Panama")
+
+    assert result.status is CandidateStatus.NEEDS_HTML
+
+
+def test_candidate_search_source_mapping_is_immutable(tmp_path):
+    db = seeded_db(tmp_path)
+    add_fixture_source_link(
+        db,
+        html_path="tests/fixtures/betexplorer_match.html",
+        status="available",
+    )
+
+    result = find_world_cup_candidates(db, home_team="England", away_team="Panama")
+
+    assert result.candidates[0].sources["betexplorer"].status == "available"
+    assert list(result.candidates[0].sources.items())
+    with pytest.raises(TypeError):
+        result.candidates[0].sources["other"] = result.candidates[0].sources[
+            "betexplorer"
+        ]
 
 
 def test_candidate_search_preserves_seeded_fixture_order_for_reverse_lookup(tmp_path):

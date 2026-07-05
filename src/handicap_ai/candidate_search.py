@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from pathlib import Path
+from types import MappingProxyType
 
 from handicap_ai.database import Database
 from handicap_ai.world_cup_seed import FIFA_WORLD_CUP, SEASON_2026
@@ -31,7 +34,7 @@ class FixtureCandidate:
     away_team: str
     kickoff_time: str | None
     status: str
-    sources: dict[str, SourceLinkCandidate]
+    sources: Mapping[str, SourceLinkCandidate]
 
 
 @dataclass(frozen=True)
@@ -79,7 +82,7 @@ def find_world_cup_candidates(
     status = (
         CandidateStatus.READY
         if any(
-            source.status == "available" and bool(source.html_path)
+            _has_available_html(source)
             for candidate in candidates
             for source in candidate.sources.values()
         )
@@ -88,7 +91,16 @@ def find_world_cup_candidates(
     return CandidateSearchResult(status=status, candidates=candidates, warnings=())
 
 
-def _fixture_candidate(db: Database, row: Any) -> FixtureCandidate:
+def _has_available_html(link: SourceLinkCandidate) -> bool:
+    """Relative html paths are resolved from the current process working directory."""
+    return (
+        link.status == "available"
+        and bool(link.html_path)
+        and Path(link.html_path).is_file()
+    )
+
+
+def _fixture_candidate(db: Database, row: sqlite3.Row) -> FixtureCandidate:
     sources = {
         link["source"]: SourceLinkCandidate(
             source=link["source"],
@@ -105,5 +117,5 @@ def _fixture_candidate(db: Database, row: Any) -> FixtureCandidate:
         away_team=row["away_team"],
         kickoff_time=row["kickoff_time"],
         status=row["status"],
-        sources=sources,
+        sources=MappingProxyType(sources),
     )
