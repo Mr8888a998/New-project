@@ -339,6 +339,44 @@ def test_fetch_source_html_endpoint_ignores_request_cache_dir(tmp_path):
     assert not html_path.is_relative_to(request_cache_dir.resolve())
 
 
+def test_fetch_source_html_endpoint_returns_failed_result_on_cache_write_error(
+    tmp_path,
+):
+    cache_file = tmp_path / "cache-file"
+    cache_file.write_text("not a directory", encoding="utf-8")
+    app = create_app(
+        db_path=tmp_path / "handicap.sqlite",
+        cache_dir=cache_file,
+    )
+    client = TestClient(app)
+    client.post(
+        "/api/register-source-url",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+            "url": "https://example.test/england-panama",
+        },
+    )
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+
+    response = client.post(
+        "/api/fetch-source-html",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+            "response_html": html,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["html_path"] is None
+    assert "cache write failed" in body["warnings"][0]
+
+
 def test_fetch_source_html_endpoint_requires_registered_url(tmp_path):
     app = create_app(
         db_path=tmp_path / "handicap.sqlite",

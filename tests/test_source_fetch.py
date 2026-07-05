@@ -320,6 +320,80 @@ def test_fetch_fixture_source_html_failed_retry_returns_previous_available_path(
     assert link["html_path"] == first.html_path
 
 
+def test_fetch_fixture_source_html_rejects_off_domain_final_url(tmp_path):
+    db = seeded_db(tmp_path)
+    good_html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+    first = fetch_fixture_source_html(
+        db,
+        home_team="England",
+        away_team="Panama",
+        source="betexplorer",
+        cache_dir=tmp_path / "cache",
+        http_get=fake_get(good_html),
+    )
+    cached_files = set((tmp_path / "cache").rglob("*.html"))
+
+    def redirected_get(url: str) -> FetchHttpResponse:
+        return FetchHttpResponse(
+            url="https://attacker.invalid/england-panama",
+            status_code=200,
+            text=good_html,
+        )
+
+    redirected = fetch_fixture_source_html(
+        db,
+        home_team="England",
+        away_team="Panama",
+        source="betexplorer",
+        cache_dir=tmp_path / "cache",
+        http_get=redirected_get,
+    )
+
+    assert redirected.status is SourceLinkStatus.FAILED
+    assert redirected.html_path == first.html_path
+    assert "redirected" in redirected.warnings[0]
+    assert "unsupported URL host for betexplorer" in redirected.warnings[0]
+    assert set((tmp_path / "cache").rglob("*.html")) == cached_files
+    fetch = next(
+        row
+        for row in db.list_source_fetches("betexplorer")
+        if row["url"] == "https://attacker.invalid/england-panama"
+    )
+    assert fetch["url"] == "https://attacker.invalid/england-panama"
+    assert "redirected" in fetch["error_message"]
+    link = source_link(db)
+    assert link["status"] == "available"
+    assert link["html_path"] == first.html_path
+
+
+def test_fetch_fixture_source_html_records_cache_write_error(tmp_path):
+    db = seeded_db(tmp_path)
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+    cache_file = tmp_path / "cache-file"
+    cache_file.write_text("not a directory", encoding="utf-8")
+
+    result = fetch_fixture_source_html(
+        db,
+        home_team="England",
+        away_team="Panama",
+        source="betexplorer",
+        cache_dir=cache_file,
+        http_get=fake_get(html),
+    )
+
+    assert result.status is SourceLinkStatus.FAILED
+    assert result.html_path is None
+    assert "cache write failed" in result.warnings[0]
+    fetch = db.list_source_fetches("betexplorer")[0]
+    assert fetch["status_code"] == 200
+    assert fetch["cache_path"] is None
+    assert fetch["content_hash"] is not None
+    assert "cache write failed" in fetch["error_message"]
+    link = source_link(db)
+    assert link["status"] == "failed"
+    assert link["html_path"] is None
+
+
 def test_fetch_fixture_source_html_records_transport_error(tmp_path):
     db = seeded_db(tmp_path)
 

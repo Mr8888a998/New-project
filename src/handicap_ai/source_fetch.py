@@ -80,13 +80,67 @@ def fetch_fixture_source_html(
 
     registered_url = validate_source_url(source_key, str(link["url"]))
     response = http_get(registered_url)
+    redirect_warning = _final_url_warning(source_key, response.url, registered_url)
+    if redirect_warning is not None:
+        _record_source_fetch(
+            db,
+            source_key,
+            response.url or registered_url,
+            response,
+            None,
+            None,
+            redirect_warning,
+        )
+        html_path = _available_html_path(db, fixture_id, source_key)
+        _mark_link_unless_available(
+            db,
+            fixture_id,
+            source_key,
+            registered_url,
+            SourceLinkStatus.FAILED,
+        )
+        return SourceLinkResult(
+            status=SourceLinkStatus.FAILED,
+            fixture_id=fixture_id,
+            source=source_key,
+            html_path=html_path,
+            url=registered_url,
+            warnings=(redirect_warning,),
+        )
+
     status, warning = _response_status(response)
-    cached_path, content_hash = _write_cache_if_fetch_succeeded(
+    cached_path, content_hash, cache_warning = _write_cache_if_fetch_succeeded(
         cache_dir,
         source_key,
         fixture_id,
         response,
     )
+    if cache_warning is not None:
+        _record_source_fetch(
+            db,
+            source_key,
+            response.url or registered_url,
+            response,
+            cached_path,
+            content_hash,
+            cache_warning,
+        )
+        html_path = _available_html_path(db, fixture_id, source_key)
+        _mark_link_unless_available(
+            db,
+            fixture_id,
+            source_key,
+            registered_url,
+            SourceLinkStatus.FAILED,
+        )
+        return SourceLinkResult(
+            status=SourceLinkStatus.FAILED,
+            fixture_id=fixture_id,
+            source=source_key,
+            html_path=html_path,
+            url=registered_url,
+            warnings=(cache_warning,),
+        )
 
     if status is SourceLinkStatus.PENDING or _can_parse_text_blocked_response(
         response, status
@@ -149,6 +203,15 @@ def fetch_fixture_source_html(
             warnings=warnings,
         )
     raise RuntimeError("unreachable fetch status")
+
+
+def _final_url_warning(source: str, final_url: str, registered_url: str) -> str | None:
+    response_url = final_url or registered_url
+    try:
+        validate_source_url(source, response_url)
+    except ValueError as error:
+        return f"source fetch redirected to unsupported URL: {error}"
+    return None
 
 
 def _response_status(response: FetchHttpResponse) -> tuple[SourceLinkStatus, str]:
@@ -340,19 +403,22 @@ def _write_cache_if_fetch_succeeded(
     source: str,
     fixture_id: int,
     response: FetchHttpResponse,
-) -> tuple[Path | None, str | None]:
+) -> tuple[Path | None, str | None, str | None]:
     if (
         response.error_message is not None
         or response.status_code is None
         or response.status_code >= 400
     ):
-        return None, None
+        return None, None, None
 
     content_hash = hashlib.sha256(response.text.encode("utf-8")).hexdigest()
     path = _cache_path(cache_dir, source, fixture_id, content_hash)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(response.text, encoding="utf-8")
-    return path, content_hash
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(response.text, encoding="utf-8")
+    except OSError as error:
+        return None, content_hash, f"cache write failed: {error}"
+    return path, content_hash, None
 
 
 def _mark_link_unless_available(

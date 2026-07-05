@@ -34,7 +34,7 @@ confirm a seeded group-stage fixture, then analyze a saved odds HTML file.
 
 ```bash
 handicap-ai discover-sources --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer
-handicap-ai register-source-url --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer --url https://example.test/match
+handicap-ai register-source-url --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer --url https://www.betexplorer.com/football/world/world-cup/england-ghana/example/
 handicap-ai fetch-source-html --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer
 ```
 
