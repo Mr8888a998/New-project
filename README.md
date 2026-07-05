@@ -12,18 +12,32 @@ python -m venv .venv
 If the standard `python` command points to the Windows Store alias, use the
 bundled Codex Python executable for local verification.
 
-## Import Fixture Data
+## Import Historical Data
 
 ```bash
 handicap-ai init-db --db data/handicap_ai.sqlite
 handicap-ai import-football-data --db data/handicap_ai.sqlite --csv tests/fixtures/football_data_sample.csv --season 2026
+handicap-ai import-history-folder --db data/handicap_ai.sqlite --path tests/fixtures/history_folder --season 2026
 ```
 
-## Analyze a Match
+## Analyze Saved Odds HTML
 
 ```bash
-handicap-ai analyze --db data/handicap_ai.sqlite --home England --away Panama
+handicap-ai scrape-match --db data/handicap_ai.sqlite --source betexplorer --html tests/fixtures/betexplorer_match.html
 ```
+
+The saved-HTML flow is the stable fallback when a live odds site blocks
+automated fetching or changes its page structure.
+
+## Run Local UI
+
+```bash
+handicap-ai ui --db data/handicap_ai.sqlite --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000` and use the dashboard to analyze saved HTML.
+
+## Output
 
 The output includes:
 
@@ -34,8 +48,10 @@ The output includes:
 - Data quality
 - Reasons
 - Risk tags
+- Source coverage
 
-## Notes
+## Source Boundaries
 
-The MVP is a decision-support tool. It does not place bets and does not claim
-certainty.
+The tool uses conservative, user-triggered scraping and saved HTML parsing. It
+does not bypass login walls, paywalls, CAPTCHA, anti-bot protections, or access
+controls. It does not place bets and does not claim certainty.
