@@ -30,6 +30,18 @@ handicap-ai find-candidates --db data/handicap_ai.sqlite --home England --away G
 The World Cup candidate workflow lets you enter home and away team names,
 confirm a seeded group-stage fixture, then analyze a saved odds HTML file.
 
+## Discover and Cache Source HTML
+
+```bash
+handicap-ai discover-sources --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer
+handicap-ai register-source-url --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer --url https://example.test/match
+handicap-ai fetch-source-html --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer
+```
+
+Source discovery and fetching are user-triggered. If a site blocks automated
+access, paste a manually saved HTML path in the dashboard and use the saved-HTML
+analysis flow.
+
 ## Analyze Saved Odds HTML
 
 ```bash
@@ -63,6 +75,7 @@ The output includes:
 
 ## Source Boundaries
 
-The tool uses conservative, user-triggered scraping and saved HTML parsing. It
-does not bypass login walls, paywalls, CAPTCHA, anti-bot protections, or access
-controls. It does not place bets and does not claim certainty.
+The tool uses conservative, best-effort, user-triggered source discovery,
+fetching, and saved HTML parsing. It does not bypass login walls, paywalls,
+CAPTCHA, anti-bot protections, or access controls. It does not place bets and
+does not claim certainty.
