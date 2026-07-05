@@ -20,6 +20,16 @@ handicap-ai import-football-data --db data/handicap_ai.sqlite --csv tests/fixtur
 handicap-ai import-history-folder --db data/handicap_ai.sqlite --path tests/fixtures/history_folder --season 2026
 ```
 
+## Seed World Cup Candidates
+
+```bash
+handicap-ai seed-world-cup --db data/handicap_ai.sqlite --season 2026
+handicap-ai find-candidates --db data/handicap_ai.sqlite --home England --away Ghana
+```
+
+The World Cup candidate workflow lets you enter home and away team names,
+confirm a seeded group-stage fixture, then analyze a saved odds HTML file.
+
 ## Analyze Saved Odds HTML
 
 ```bash
@@ -35,7 +45,8 @@ automated fetching or changes its page structure.
 handicap-ai ui --db data/handicap_ai.sqlite --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000` and use the dashboard to analyze saved HTML.
+Open `http://127.0.0.1:8000`, enter home and away team names, click
+`Find candidates`, then analyze a saved HTML file for the confirmed fixture.
 
 ## Output
 
