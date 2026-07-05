@@ -45,6 +45,17 @@ def fake_get(
     return _get
 
 
+def source_link(db, source="betexplorer"):
+    fixture = db.find_tournament_fixtures(
+        "fifa_world_cup",
+        "2026",
+        "England",
+        "Panama",
+    )[0]
+    links = db.list_fixture_source_links(int(fixture["fixture_id"]))
+    return next(link for link in links if link["source"] == source)
+
+
 def test_fetch_fixture_source_html_caches_available_html(tmp_path):
     db = seeded_db(tmp_path)
     html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
@@ -62,10 +73,36 @@ def test_fetch_fixture_source_html_caches_available_html(tmp_path):
     assert result.html_path is not None
     assert Path(result.html_path).is_file()
     assert db.list_source_fetches("betexplorer")[0]["status_code"] == 200
-    fixture = db.find_tournament_fixtures(
-        "fifa_world_cup", "2026", "England", "Panama"
-    )[0]
-    link = db.list_fixture_source_links(int(fixture["fixture_id"]))[0]
+    link = source_link(db)
+    assert link["status"] == "available"
+    assert link["html_path"] == result.html_path
+
+
+def test_fetch_fixture_source_html_caches_oddsportal_html(tmp_path):
+    db = seeded_db(tmp_path)
+    register_fixture_source_url(
+        db,
+        home_team="England",
+        away_team="Panama",
+        source="OddsPortal",
+        url="https://example.test/england-panama-oddsportal",
+    )
+    html = Path("tests/fixtures/oddsportal_match.html").read_text(encoding="utf-8")
+
+    result = fetch_fixture_source_html(
+        db,
+        home_team="England",
+        away_team="Panama",
+        source="OddsPortal",
+        cache_dir=tmp_path / "cache",
+        http_get=fake_get(html),
+    )
+
+    assert result.status is SourceLinkStatus.AVAILABLE
+    assert result.html_path is not None
+    assert Path(result.html_path).is_file()
+    assert db.list_source_fetches("oddsportal")[0]["status_code"] == 200
+    link = source_link(db, "oddsportal")
     assert link["status"] == "available"
     assert link["html_path"] == result.html_path
 
@@ -109,10 +146,7 @@ def test_fetch_fixture_source_html_marks_blocked_without_overwriting_available(t
     )
 
     assert blocked.status is SourceLinkStatus.BLOCKED
-    fixture = db.find_tournament_fixtures(
-        "fifa_world_cup", "2026", "England", "Panama"
-    )[0]
-    link = db.list_fixture_source_links(int(fixture["fixture_id"]))[0]
+    link = source_link(db)
     assert link["status"] == "available"
     assert link["html_path"] == first.html_path
 
@@ -130,7 +164,99 @@ def test_fetch_fixture_source_html_rejects_malformed_html(tmp_path):
     )
 
     assert result.status is SourceLinkStatus.FAILED
+    assert result.html_path is None
     assert "missing BetExplorer match container" in result.warnings[0]
+    fetch = db.list_source_fetches("betexplorer")[0]
+    assert "missing BetExplorer match container" in fetch["error_message"]
+    assert fetch["cache_path"] is not None
+    assert Path(fetch["cache_path"]).is_file()
+    link = source_link(db)
+    assert link["status"] != "available"
+    assert link["html_path"] is None
+
+
+def test_fetch_fixture_source_html_rejects_incomplete_markets(tmp_path):
+    db = seeded_db(tmp_path)
+    html = Path("tests/fixtures/betexplorer_missing_market.html").read_text(
+        encoding="utf-8"
+    )
+
+    result = fetch_fixture_source_html(
+        db,
+        home_team="England",
+        away_team="Panama",
+        source="betexplorer",
+        cache_dir=tmp_path / "cache",
+        http_get=fake_get(html),
+    )
+
+    assert result.status is SourceLinkStatus.FAILED
+    assert result.html_path is None
+    assert "missing markets" in result.warnings[0]
+    assert "totals" in result.warnings[0]
+    fetch = db.list_source_fetches("betexplorer")[0]
+    assert "missing markets" in fetch["error_message"]
+    assert "totals" in fetch["error_message"]
+    assert fetch["cache_path"] is not None
+    assert Path(fetch["cache_path"]).is_file()
+    assert source_link(db)["status"] != "available"
+
+
+def test_fetch_fixture_source_html_rejects_wrong_fixture_page(tmp_path):
+    db = seeded_db(tmp_path)
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+    html = html.replace("England - Panama", "Brazil - Morocco")
+    html = html.replace("be:england-panama", "be:brazil-morocco")
+
+    result = fetch_fixture_source_html(
+        db,
+        home_team="England",
+        away_team="Panama",
+        source="betexplorer",
+        cache_dir=tmp_path / "cache",
+        http_get=fake_get(html),
+    )
+
+    assert result.status is SourceLinkStatus.FAILED
+    assert result.html_path is None
+    assert "fetched match Brazil vs Morocco does not match England vs Panama" in (
+        result.warnings[0]
+    )
+    fetch = db.list_source_fetches("betexplorer")[0]
+    assert "does not match England vs Panama" in fetch["error_message"]
+    link = source_link(db)
+    assert link["status"] != "available"
+    assert link["html_path"] is None
+
+
+def test_fetch_fixture_source_html_failed_retry_returns_previous_available_path(
+    tmp_path,
+):
+    db = seeded_db(tmp_path)
+    good_html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+    first = fetch_fixture_source_html(
+        db,
+        home_team="England",
+        away_team="Panama",
+        source="betexplorer",
+        cache_dir=tmp_path / "cache",
+        http_get=fake_get(good_html),
+    )
+
+    retry = fetch_fixture_source_html(
+        db,
+        home_team="England",
+        away_team="Panama",
+        source="betexplorer",
+        cache_dir=tmp_path / "cache",
+        http_get=fake_get("<html>not a match page</html>"),
+    )
+
+    assert retry.status is SourceLinkStatus.FAILED
+    assert retry.html_path == first.html_path
+    link = source_link(db)
+    assert link["status"] == "available"
+    assert link["html_path"] == first.html_path
 
 
 def test_fetch_fixture_source_html_records_transport_error(tmp_path):

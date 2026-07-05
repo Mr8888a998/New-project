@@ -14,6 +14,7 @@ import httpx
 from handicap_ai.adapters.betexplorer import BetExplorerHtmlAdapter
 from handicap_ai.adapters.oddsportal import OddsPortalHtmlAdapter
 from handicap_ai.database import Database
+from handicap_ai.names import normalize_team_name
 from handicap_ai.scraping.models import SourceFetchRecord
 from handicap_ai.source_discovery import SourceLinkResult, SourceLinkStatus
 from handicap_ai.world_cup_seed import FIFA_WORLD_CUP, SEASON_2026
@@ -81,24 +82,21 @@ def fetch_fixture_source_html(
         fixture_id,
         response,
     )
-    fetch_url = response.url or registered_url
-    db.upsert_source_fetch(
-        SourceFetchRecord(
-            source=source_key,
-            url=fetch_url,
-            fetched_at=datetime.now(timezone.utc),
-            status_code=response.status_code,
-            cache_path=str(cached_path) if cached_path is not None else None,
-            content_hash=content_hash,
-            error_message=response.error_message,
-        )
-    )
 
     if status is SourceLinkStatus.PENDING or _can_parse_text_blocked_response(
         response, status
     ):
-        parse_warning = _parse_warning(source_key, response.text)
+        parse_warning = _parse_warning(source_key, response.text, fixture)
         if parse_warning is None:
+            _record_source_fetch(
+                db,
+                source_key,
+                response.url or registered_url,
+                response,
+                cached_path,
+                content_hash,
+                response.error_message,
+            )
             html_path = str(cached_path) if cached_path is not None else None
             db.upsert_fixture_source_link(
                 fixture_id=fixture_id,
@@ -116,24 +114,20 @@ def fetch_fixture_source_html(
             )
         if status is SourceLinkStatus.PENDING:
             status = SourceLinkStatus.FAILED
-            _mark_link_unless_available(
-                db,
-                fixture_id,
-                source_key,
-                registered_url,
-                status,
-            )
-            return SourceLinkResult(
-                status=status,
-                fixture_id=fixture_id,
-                source=source_key,
-                html_path=str(cached_path) if cached_path is not None else None,
-                url=registered_url,
-                warnings=(parse_warning,),
-            )
+            warning = parse_warning
 
     if status is not SourceLinkStatus.PENDING:
+        _record_source_fetch(
+            db,
+            source_key,
+            response.url or registered_url,
+            response,
+            cached_path,
+            content_hash,
+            response.error_message or warning,
+        )
         warnings = (warning,)
+        html_path = _available_html_path(db, fixture_id, source_key)
         _mark_link_unless_available(
             db,
             fixture_id,
@@ -145,7 +139,7 @@ def fetch_fixture_source_html(
             status=status,
             fixture_id=fixture_id,
             source=source_key,
-            html_path=str(cached_path) if cached_path is not None else None,
+            html_path=html_path,
             url=registered_url,
             warnings=warnings,
         )
@@ -180,13 +174,18 @@ def _can_parse_text_blocked_response(
     )
 
 
-def _parse_warning(source: str, html: str) -> str | None:
+def _parse_warning(source: str, html: str, fixture: sqlite3.Row) -> str | None:
     adapter = _adapter_for_source(source)
     try:
-        _, coverage = adapter(Path("unused")).parse_html(html)
+        bundle, coverage = adapter(Path("unused")).parse_html(html)
     except ValueError as error:
         return str(error)
 
+    if not _matches_fixture(bundle.match.home_team, bundle.match.away_team, fixture):
+        return (
+            f"fetched match {bundle.match.home_team} vs {bundle.match.away_team} "
+            f"does not match {fixture['home_team']} vs {fixture['away_team']}"
+        )
     if not coverage.is_complete:
         missing = ", ".join(coverage.missing_markets)
         return f"{source} parser missing markets: {missing}"
@@ -241,6 +240,51 @@ def _source_link(db: Database, fixture_id: int, source: str) -> sqlite3.Row | No
         if link["source"].lower() == source.lower():
             return link
     return None
+
+
+def _matches_fixture(
+    parsed_home_team: str,
+    parsed_away_team: str,
+    fixture: sqlite3.Row,
+) -> bool:
+    parsed_pair = (
+        normalize_team_name(parsed_home_team),
+        normalize_team_name(parsed_away_team),
+    )
+    fixture_pair = (
+        normalize_team_name(fixture["home_team"]),
+        normalize_team_name(fixture["away_team"]),
+    )
+    return parsed_pair == fixture_pair or parsed_pair == fixture_pair[::-1]
+
+
+def _available_html_path(db: Database, fixture_id: int, source: str) -> str | None:
+    link = _source_link(db, fixture_id, source)
+    if link is None or link["status"] != SourceLinkStatus.AVAILABLE.value:
+        return None
+    return link["html_path"]
+
+
+def _record_source_fetch(
+    db: Database,
+    source: str,
+    url: str,
+    response: FetchHttpResponse,
+    cached_path: Path | None,
+    content_hash: str | None,
+    error_message: str | None,
+) -> None:
+    db.upsert_source_fetch(
+        SourceFetchRecord(
+            source=source,
+            url=url,
+            fetched_at=datetime.now(timezone.utc),
+            status_code=response.status_code,
+            cache_path=str(cached_path) if cached_path is not None else None,
+            content_hash=content_hash,
+            error_message=error_message,
+        )
+    )
 
 
 def _write_cache_if_fetch_succeeded(
