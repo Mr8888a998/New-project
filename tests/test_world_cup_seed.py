@@ -72,9 +72,17 @@ def test_world_cup_seed_imports_aliases(tmp_path):
 
     summary = import_world_cup_2026_seed(db)
 
-    assert summary.aliases_imported == 8
+    assert summary.aliases_imported == 9
     assert (
         db.resolve_tournament_team(FIFA_WORLD_CUP, "2026", "Congo DR")["team_name"]
+        == "DR Congo"
+    )
+    assert (
+        db.resolve_tournament_team(
+            FIFA_WORLD_CUP,
+            "2026",
+            "Democratic Republic of the Congo",
+        )["team_name"]
         == "DR Congo"
     )
     assert (

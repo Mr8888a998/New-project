@@ -77,7 +77,7 @@ WORLD_CUP_2026_GROUPS: tuple[SeedTeam, ...] = (
     SeedTeam("J", "Jordan"),
     SeedTeam("K", "Colombia"),
     SeedTeam("K", "Portugal"),
-    SeedTeam("K", "DR Congo", aliases=("Congo DR",)),
+    SeedTeam("K", "DR Congo", aliases=("Congo DR", "Democratic Republic of the Congo")),
     SeedTeam("K", "Uzbekistan"),
     SeedTeam("L", "England"),
     SeedTeam("L", "Croatia"),
