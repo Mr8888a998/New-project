@@ -60,7 +60,6 @@ class SourceFetchRequest(BaseModel):
     home_team: str
     away_team: str
     source: str
-    cache_dir: str = "data/cache"
     response_html: str | None = None
 
 
@@ -115,7 +114,7 @@ def _source_link_payload(result: SourceLinkResult) -> dict[str, object]:
     }
 
 
-def create_app(db_path: Path) -> FastAPI:
+def create_app(db_path: Path, cache_dir: Path = Path("data/cache")) -> FastAPI:
     app = FastAPI(title="Handicap AI")
     database = Database(db_path)
     database.migrate()
@@ -224,7 +223,7 @@ def create_app(db_path: Path) -> FastAPI:
                     home_team=payload.home_team,
                     away_team=payload.away_team,
                     source=payload.source,
-                    cache_dir=payload.cache_dir,
+                    cache_dir=cache_dir,
                     http_get=http_get,
                 )
             else:
@@ -233,7 +232,7 @@ def create_app(db_path: Path) -> FastAPI:
                     home_team=payload.home_team,
                     away_team=payload.away_team,
                     source=payload.source,
-                    cache_dir=payload.cache_dir,
+                    cache_dir=cache_dir,
                 )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

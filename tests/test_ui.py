@@ -160,6 +160,26 @@ def test_register_source_url_endpoint_updates_candidate(tmp_path):
     assert body["source"] == "betexplorer"
     assert body["status"] == "pending"
     assert body["url"] == "https://example.test/england-ghana"
+    assert body["html_path"] is None
+    assert body["warnings"] == []
+
+
+def test_register_source_url_endpoint_reports_unknown_team(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/register-source-url",
+        json={
+            "home_team": "Atlantis",
+            "away_team": "Ghana",
+            "source": "betexplorer",
+            "url": "https://example.test/atlantis-ghana",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Unknown team" in response.json()["detail"]
 
 
 def test_discover_sources_endpoint_uses_listing_html(tmp_path):
@@ -204,8 +224,28 @@ def test_discover_sources_endpoint_requires_base_url_with_listing_html(tmp_path)
     assert "base_url" in response.json()["detail"]
 
 
-def test_fetch_source_html_endpoint_uses_response_html(tmp_path):
+def test_discover_sources_endpoint_reports_unsupported_source(tmp_path):
     app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/discover-sources",
+        json={
+            "home_team": "England",
+            "away_team": "Ghana",
+            "source": "unknown",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "unsupported source" in response.json()["detail"]
+
+
+def test_fetch_source_html_endpoint_uses_response_html(tmp_path):
+    app = create_app(
+        db_path=tmp_path / "handicap.sqlite",
+        cache_dir=tmp_path / "cache",
+    )
     client = TestClient(app)
     client.post(
         "/api/register-source-url",
@@ -225,7 +265,6 @@ def test_fetch_source_html_endpoint_uses_response_html(tmp_path):
             "away_team": "Panama",
             "source": "betexplorer",
             "response_html": html,
-            "cache_dir": str(tmp_path / "cache"),
         },
     )
 
@@ -235,8 +274,48 @@ def test_fetch_source_html_endpoint_uses_response_html(tmp_path):
     assert Path(body["html_path"]).is_file()
 
 
+def test_fetch_source_html_endpoint_ignores_request_cache_dir(tmp_path):
+    server_cache_dir = tmp_path / "cache"
+    request_cache_dir = tmp_path / "outside"
+    app = create_app(
+        db_path=tmp_path / "handicap.sqlite",
+        cache_dir=server_cache_dir,
+    )
+    client = TestClient(app)
+    client.post(
+        "/api/register-source-url",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+            "url": "https://example.test/england-panama",
+        },
+    )
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+
+    response = client.post(
+        "/api/fetch-source-html",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+            "response_html": html,
+            "cache_dir": str(request_cache_dir),
+        },
+    )
+
+    assert response.status_code == 200
+    html_path = Path(response.json()["html_path"]).resolve()
+    assert html_path.is_file()
+    assert html_path.is_relative_to(server_cache_dir.resolve())
+    assert not html_path.is_relative_to(request_cache_dir.resolve())
+
+
 def test_fetch_source_html_endpoint_requires_registered_url(tmp_path):
-    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    app = create_app(
+        db_path=tmp_path / "handicap.sqlite",
+        cache_dir=tmp_path / "cache",
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -246,7 +325,6 @@ def test_fetch_source_html_endpoint_requires_registered_url(tmp_path):
             "away_team": "Panama",
             "source": "betexplorer",
             "response_html": "<html></html>",
-            "cache_dir": str(tmp_path / "cache"),
         },
     )
 
