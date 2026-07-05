@@ -84,9 +84,12 @@ def find_candidates(
         )
         if candidate.sources:
             for source, link in candidate.sources.items():
-                console.print(
-                    f"- {source}: {link.status} {link.html_path or ''}".rstrip()
-                )
+                details = [f"- {source}: {link.status}"]
+                if link.html_path:
+                    details.append(f"html={link.html_path}")
+                if link.url:
+                    details.append(f"url={link.url}")
+                console.print(" ".join(details))
         else:
             console.print("- saved HTML required")
 
