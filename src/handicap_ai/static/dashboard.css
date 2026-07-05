@@ -257,12 +257,46 @@ li + li {
   color: var(--muted);
 }
 
+.source-actions,
+.source-link-list {
+  display: grid;
+  gap: 10px;
+}
+
+.source-link-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  overflow-wrap: anywhere;
+  padding: 12px;
+}
+
+.source-link-card span {
+  color: var(--muted);
+}
+
 #find-candidates-button {
   background: #334155;
 }
 
 #find-candidates-button:hover,
 #find-candidates-button:focus-visible {
+  background: #1f2937;
+}
+
+#register-source-url-button,
+#discover-sources-button,
+#fetch-source-html-button {
+  background: #334155;
+}
+
+#register-source-url-button:hover,
+#register-source-url-button:focus-visible,
+#discover-sources-button:hover,
+#discover-sources-button:focus-visible,
+#fetch-source-html-button:hover,
+#fetch-source-html-button:focus-visible {
   background: #1f2937;
 }
 

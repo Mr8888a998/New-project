@@ -22,6 +22,10 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "Candidate confirmation" in response.text
     assert "BetExplorer" in response.text
     assert "OddsPortal" in response.text
+    assert "Discover sources" in response.text
+    assert "Register source URL" in response.text
+    assert "Fetch source HTML" in response.text
+    assert "Source links" in response.text
 
 
 def test_saved_html_analysis_endpoint_returns_recommendations(tmp_path):
