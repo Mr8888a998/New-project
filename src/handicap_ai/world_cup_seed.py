@@ -29,9 +29,9 @@ class SeedFixture:
 
 @dataclass(frozen=True)
 class WorldCupSeedSummary:
-    team_count: int
-    alias_count: int
-    fixture_count: int
+    teams_imported: int
+    fixtures_imported: int
+    aliases_imported: int
 
 
 WORLD_CUP_2026_GROUPS: tuple[SeedTeam, ...] = (
@@ -77,7 +77,7 @@ WORLD_CUP_2026_GROUPS: tuple[SeedTeam, ...] = (
     SeedTeam("J", "Jordan"),
     SeedTeam("K", "Colombia"),
     SeedTeam("K", "Portugal"),
-    SeedTeam("K", "DR Congo", aliases=("Congo DR", "Democratic Republic of the Congo")),
+    SeedTeam("K", "DR Congo", aliases=("Congo DR",)),
     SeedTeam("K", "Uzbekistan"),
     SeedTeam("L", "England"),
     SeedTeam("L", "Croatia"),
@@ -138,7 +138,7 @@ def import_world_cup_2026_seed(db: Database) -> WorldCupSeedSummary:
         )
 
     return WorldCupSeedSummary(
-        team_count=len(WORLD_CUP_2026_GROUPS),
-        alias_count=alias_count,
-        fixture_count=len(fixtures),
+        teams_imported=len(WORLD_CUP_2026_GROUPS),
+        fixtures_imported=len(fixtures),
+        aliases_imported=alias_count,
     )

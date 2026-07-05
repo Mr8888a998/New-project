@@ -6,9 +6,10 @@ def test_world_cup_seed_imports_48_teams(tmp_path):
     db = Database(tmp_path / "handicap.sqlite")
     db.migrate()
 
-    import_world_cup_2026_seed(db)
+    summary = import_world_cup_2026_seed(db)
 
     teams = db.list_tournament_teams(FIFA_WORLD_CUP, "2026")
+    assert summary.teams_imported == 48
     assert len(teams) == 48
 
 
@@ -46,7 +47,7 @@ def test_world_cup_seed_imports_group_stage_fixtures(tmp_path):
 
     summary = import_world_cup_2026_seed(db)
 
-    assert summary.fixture_count == 72
+    assert summary.fixtures_imported == 72
     england_ghana = db.find_tournament_fixtures(
         tournament=FIFA_WORLD_CUP,
         season="2026",
@@ -69,8 +70,9 @@ def test_world_cup_seed_imports_aliases(tmp_path):
     db = Database(tmp_path / "handicap.sqlite")
     db.migrate()
 
-    import_world_cup_2026_seed(db)
+    summary = import_world_cup_2026_seed(db)
 
+    assert summary.aliases_imported == 8
     assert (
         db.resolve_tournament_team(FIFA_WORLD_CUP, "2026", "Congo DR")["team_name"]
         == "DR Congo"
