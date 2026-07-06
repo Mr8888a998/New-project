@@ -162,6 +162,7 @@
       }
 
       function setSourceBusy(isBusy) {
+        findCandidatesButton.disabled = isBusy;
         autoAnalyzeButton.disabled = isBusy;
         registerSourceUrlButton.disabled = isBusy;
         discoverSourcesButton.disabled = isBusy;
@@ -233,6 +234,18 @@
         sourceLinkList.appendChild(card);
       }
 
+      function clearSourceResult() {
+        setText("#source-link-status", "Not checked");
+        document.querySelector("#source-url").value = "";
+
+        const sourceLinkList = document.querySelector("#source-link-list");
+        sourceLinkList.replaceChildren();
+
+        const emptyText = document.createElement("p");
+        emptyText.textContent = "Register or discover a source URL for the selected fixture.";
+        sourceLinkList.appendChild(emptyText);
+      }
+
       function renderMissingSourceResult(status, warnings) {
         setText("#source-link-status", status || "Not available");
 
@@ -292,26 +305,49 @@
       }
 
       async function findCandidates() {
+        const requestId = workspaceRequestId + 1;
+        workspaceRequestId = requestId;
         const homeTeam = document.querySelector("#home-team").value;
         const awayTeam = document.querySelector("#away-team").value;
         message.textContent = "Finding candidates";
+        clearAnalysis();
+        clearSourceResult();
+        setSourceBusy(true);
 
-        const response = await fetch("/api/world-cup-candidates", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({
-            home_team: homeTeam,
-            away_team: awayTeam,
-          }),
-        });
+        try {
+          const response = await fetch("/api/world-cup-candidates", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              home_team: homeTeam,
+              away_team: awayTeam,
+            }),
+          });
 
-        if (!response.ok) {
-          throw new Error(await errorMessage(response));
+          if (requestId !== workspaceRequestId) {
+            return;
+          }
+
+          if (!response.ok) {
+            throw new Error(await errorMessage(response));
+          }
+
+          const body = await response.json();
+          if (requestId !== workspaceRequestId) {
+            return;
+          }
+
+          renderCandidates(body);
+          message.textContent = "Candidates checked";
+        } catch (error) {
+          if (requestId === workspaceRequestId) {
+            throw error;
+          }
+        } finally {
+          if (requestId === workspaceRequestId) {
+            setSourceBusy(false);
+          }
         }
-
-        const body = await response.json();
-        renderCandidates(body);
-        message.textContent = "Candidates checked";
       }
 
       async function postSourceAction(path, payload) {

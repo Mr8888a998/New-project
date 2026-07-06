@@ -201,10 +201,11 @@ def test_auto_analyze_returns_manual_source_when_discovery_has_no_url(tmp_path):
     assert "No source URL found" in result.warnings[0]
 
 
-def test_auto_analyze_returns_manual_when_discovered_html_is_missing(tmp_path):
+def test_auto_analyze_fetches_when_discovered_html_is_missing(tmp_path):
     db = seeded_db(tmp_path)
     fixture = england_panama_fixture(db)
     missing_html_path = tmp_path / "missing-file.html"
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
     calls = []
     db.upsert_fixture_source_link(
         fixture_id=int(fixture["fixture_id"]),
@@ -225,8 +226,20 @@ def test_auto_analyze_returns_manual_when_discovered_html_is_missing(tmp_path):
             warnings=("cached HTML missing",),
         )
 
-    def fetch_runner(*args, **kwargs):
-        raise AssertionError("missing discovered HTML should fall back to manual")
+    def fetch_runner(db, home_team, away_team, source, cache_dir):
+        calls.append("fetch")
+
+        def http_get(url):
+            return FetchHttpResponse(url=url, status_code=200, text=html)
+
+        return fetch_fixture_source_html(
+            db,
+            home_team,
+            away_team,
+            source,
+            cache_dir=cache_dir,
+            http_get=http_get,
+        )
 
     result = auto_analyze_candidate(
         db,
@@ -238,14 +251,14 @@ def test_auto_analyze_returns_manual_when_discovered_html_is_missing(tmp_path):
         fetch_runner=fetch_runner,
     )
 
-    assert calls == ["discover"]
-    assert result.status is AutoAnalyzeStatus.NEEDS_MANUAL_SOURCE
-    assert result.status is not AutoAnalyzeStatus.ANALYSIS_READY
-    assert result.stage == "manual_required"
-    assert result.analysis is None
+    assert calls == ["discover", "fetch"]
+    assert result.status is AutoAnalyzeStatus.ANALYSIS_READY
+    assert result.stage == "analyzed"
+    assert result.analysis is not None
     assert result.source_link is not None
     assert result.source_link.status is SourceLinkStatus.AVAILABLE
-    assert "cached HTML missing" in result.warnings
+    assert result.source_link.html_path is not None
+    assert Path(result.source_link.html_path).is_file()
 
 
 def test_auto_analyze_returns_fetch_blocked_when_fetch_is_blocked(tmp_path):

@@ -43,9 +43,13 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "setSourceBusy" in response.text
     assert "workspaceRequestId" in response.text
     assert "if (requestId !== workspaceRequestId)" in response.text
+    assert response.text.count("const requestId = workspaceRequestId + 1;") >= 4
+    assert "findCandidatesButton.disabled" in response.text
     assert "registerSourceUrlButton.disabled" in response.text
     assert "function clearAnalysis()" in response.text
+    assert "function clearSourceResult()" in response.text
     assert "clearAnalysis();" in response.text
+    assert "clearSourceResult();" in response.text
     assert "function renderMissingSourceResult" in response.text
     assert "candidates: []" in response.text
     assert "cache_dir" not in response.text

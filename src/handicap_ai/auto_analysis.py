@@ -213,7 +213,7 @@ def auto_analyze_candidate(
     if discovered.status is SourceLinkStatus.AVAILABLE:
         if _has_existing_html(discovered):
             return _analysis_ready(db, candidate, discovered)
-        return _manual_result(candidate, _with_missing_html_warning(discovered))
+        discovered = _with_missing_html_warning(discovered)
     if discovered.url is None:
         return _manual_result(candidate, discovered)
 

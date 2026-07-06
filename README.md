@@ -65,8 +65,9 @@ automated fetching or changes its page structure.
 handicap-ai ui --db data/handicap_ai.sqlite --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000`, enter home and away team names, click
-`Find candidates`, then analyze a saved HTML file for the confirmed fixture.
+Open `http://127.0.0.1:8000`, enter home and away team names, and click
+`Auto analyze` to run the candidate, source, fetch, and analysis flow. If a
+source blocks automation, use the manual URL, fetch, or saved HTML controls.
 
 ## Output
 
