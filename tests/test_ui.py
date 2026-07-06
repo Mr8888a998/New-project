@@ -25,6 +25,10 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "Home team" in response.text
     assert "Away team" in response.text
     assert "Find candidates" in response.text
+    assert "Auto analyze" in response.text
+    assert 'id="auto-analyze-button"' in response.text
+    assert "/api/auto-analyze-candidate" in response.text
+    assert "autoAnalyzeButton.disabled" in response.text
     assert "Candidate confirmation" in response.text
     assert "BetExplorer" in response.text
     assert "OddsPortal" in response.text
@@ -37,8 +41,13 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "checkValidity()" in response.text
     assert "reportValidity()" in response.text
     assert "setSourceBusy" in response.text
-    assert "sourceRequestId" in response.text
+    assert "workspaceRequestId" in response.text
+    assert "if (requestId !== workspaceRequestId)" in response.text
     assert "registerSourceUrlButton.disabled" in response.text
+    assert "function clearAnalysis()" in response.text
+    assert "clearAnalysis();" in response.text
+    assert "function renderMissingSourceResult" in response.text
+    assert "candidates: []" in response.text
     assert "cache_dir" not in response.text
 
 

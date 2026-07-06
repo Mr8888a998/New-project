@@ -42,6 +42,7 @@
           </fieldset>
 
           <button id="find-candidates-button" type="button">Find candidates</button>
+          <button id="auto-analyze-button" type="button">Auto analyze</button>
           <button type="submit">Analyze saved HTML</button>
           <p id="form-message" class="form-message" role="status">Ready</p>
         </form>
@@ -138,10 +139,11 @@
       const form = document.querySelector("#analysis-form");
       const message = document.querySelector("#form-message");
       const findCandidatesButton = document.querySelector("#find-candidates-button");
+      const autoAnalyzeButton = document.querySelector("#auto-analyze-button");
       const registerSourceUrlButton = document.querySelector("#register-source-url-button");
       const discoverSourcesButton = document.querySelector("#discover-sources-button");
       const fetchSourceHtmlButton = document.querySelector("#fetch-source-html-button");
-      let sourceRequestId = 0;
+      let workspaceRequestId = 0;
 
       function setText(id, value) {
         document.querySelector(id).textContent = value;
@@ -160,6 +162,7 @@
       }
 
       function setSourceBusy(isBusy) {
+        autoAnalyzeButton.disabled = isBusy;
         registerSourceUrlButton.disabled = isBusy;
         discoverSourcesButton.disabled = isBusy;
         fetchSourceHtmlButton.disabled = isBusy;
@@ -230,6 +233,25 @@
         sourceLinkList.appendChild(card);
       }
 
+      function renderMissingSourceResult(status, warnings) {
+        setText("#source-link-status", status || "Not available");
+
+        const sourceLinkList = document.querySelector("#source-link-list");
+        sourceLinkList.replaceChildren();
+
+        for (const warning of warnings || []) {
+          const warningText = document.createElement("p");
+          warningText.textContent = warning;
+          sourceLinkList.appendChild(warningText);
+        }
+
+        if (!warnings || warnings.length === 0) {
+          const emptyText = document.createElement("p");
+          emptyText.textContent = "No source link available.";
+          sourceLinkList.appendChild(emptyText);
+        }
+      }
+
       function renderCandidates(body) {
         setText("#candidate-status", body.status);
 
@@ -293,8 +315,8 @@
       }
 
       async function postSourceAction(path, payload) {
-        const requestId = sourceRequestId + 1;
-        sourceRequestId = requestId;
+        const requestId = workspaceRequestId + 1;
+        workspaceRequestId = requestId;
         setSourceBusy(true);
         message.textContent = "Updating source link";
 
@@ -305,17 +327,133 @@
             body: JSON.stringify(payload),
           });
 
+          if (requestId !== workspaceRequestId) {
+            return;
+          }
+
           if (!response.ok) {
             throw new Error(await errorMessage(response));
           }
 
           const body = await response.json();
-          if (requestId === sourceRequestId) {
+          if (requestId === workspaceRequestId) {
             renderSourceResult(body);
             message.textContent = "Source link updated";
           }
+        } catch (error) {
+          if (requestId === workspaceRequestId) {
+            throw error;
+          }
         } finally {
-          if (requestId === sourceRequestId) {
+          if (requestId === workspaceRequestId) {
+            setSourceBusy(false);
+          }
+        }
+      }
+
+      function renderAnalysis(body) {
+        const teams = splitMatch(body.match);
+        document.querySelector("#home-team").value = teams.home;
+        document.querySelector("#away-team").value = teams.away;
+        setText("#match-title", body.match);
+        setText("#coverage-status", body.coverage);
+        setText("#data-quality", Number(body.data_quality).toFixed(2));
+        setText("#handicap-pick", body.picks.handicap);
+        setText("#total-pick", body.picks.total);
+        setText("#one-x-two-pick", body.picks["1x2"]);
+        setText("#handicap-confidence", `${body.confidence.handicap} confidence`);
+        setText("#total-confidence", `${body.confidence.total} confidence`);
+        setText("#one-x-two-confidence", `${body.confidence["1x2"]} confidence`);
+
+        const riskTags = document.querySelector("#risk-tags");
+        riskTags.replaceChildren();
+        const tags = body.risk_tags.length ? body.risk_tags : ["none"];
+        for (const tag of tags) {
+          const chip = document.createElement("span");
+          chip.textContent = tag;
+          riskTags.appendChild(chip);
+        }
+        setText("#risk-summary", `${tags.length} shown`);
+      }
+
+      function clearAnalysis() {
+        setText("#match-title", "Match pending");
+        setText("#coverage-status", "Pending");
+        setText("#data-quality", "Pending");
+        setText("#handicap-pick", "No pick");
+        setText("#total-pick", "No pick");
+        setText("#one-x-two-pick", "No pick");
+        setText("#handicap-confidence", "Confidence pending");
+        setText("#total-confidence", "Confidence pending");
+        setText("#one-x-two-confidence", "Confidence pending");
+
+        const riskTags = document.querySelector("#risk-tags");
+        riskTags.replaceChildren();
+        const emptyTag = document.createElement("span");
+        emptyTag.textContent = "No tags yet";
+        riskTags.appendChild(emptyTag);
+        setText("#risk-summary", "Pending");
+      }
+
+      async function autoAnalyze() {
+        const requestId = workspaceRequestId + 1;
+        workspaceRequestId = requestId;
+        setSourceBusy(true);
+        message.textContent = "Candidate confirmation";
+
+        try {
+          const response = await fetch("/api/auto-analyze-candidate", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(selectedFixture()),
+          });
+
+          if (requestId !== workspaceRequestId) {
+            return;
+          }
+
+          if (!response.ok) {
+            throw new Error(await errorMessage(response));
+          }
+
+          const body = await response.json();
+          if (requestId !== workspaceRequestId) {
+            return;
+          }
+
+          if (body.candidate) {
+            renderCandidates({
+              status: body.status,
+              warnings: body.warnings || [],
+              candidates: [body.candidate],
+            });
+          } else {
+            renderCandidates({
+              status: body.status,
+              warnings: body.warnings || [],
+              candidates: [],
+            });
+          }
+          if (body.source_link) {
+            renderSourceResult(body.source_link);
+          } else {
+            renderMissingSourceResult(body.status || "Not available", body.warnings || []);
+          }
+          if (body.analysis) {
+            setText("#source-status", body.source_link?.source || selectedSource());
+            renderAnalysis(body.analysis);
+            message.textContent = "Analysis ready";
+          } else {
+            clearAnalysis();
+            message.textContent = body.warnings?.[0] || body.status;
+            setText("#source-status", body.status);
+          }
+        } catch (error) {
+          if (requestId === workspaceRequestId) {
+            throw error;
+          }
+        } finally {
+          if (requestId === workspaceRequestId) {
             setSourceBusy(false);
           }
         }
@@ -327,6 +465,15 @@
         } catch (error) {
           message.textContent = error.message;
           setText("#candidate-status", "Error");
+        }
+      });
+
+      autoAnalyzeButton.addEventListener("click", async () => {
+        try {
+          await autoAnalyze();
+        } catch (error) {
+          message.textContent = error.message;
+          setText("#source-status", "Error");
         }
       });
 
@@ -371,9 +518,12 @@
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
+        const requestId = workspaceRequestId + 1;
+        workspaceRequestId = requestId;
         const data = new FormData(form);
         message.textContent = "Analyzing";
         setText("#source-status", data.get("source"));
+        setSourceBusy(true);
 
         try {
           const response = await fetch("/api/analyze-candidate", {
@@ -385,37 +535,30 @@
             }),
           });
 
+          if (requestId !== workspaceRequestId) {
+            return;
+          }
+
           if (!response.ok) {
             throw new Error(await errorMessage(response));
           }
 
           const body = await response.json();
-          const teams = splitMatch(body.match);
-          document.querySelector("#home-team").value = teams.home;
-          document.querySelector("#away-team").value = teams.away;
-          setText("#match-title", body.match);
-          setText("#coverage-status", body.coverage);
-          setText("#data-quality", Number(body.data_quality).toFixed(2));
-          setText("#handicap-pick", body.picks.handicap);
-          setText("#total-pick", body.picks.total);
-          setText("#one-x-two-pick", body.picks["1x2"]);
-          setText("#handicap-confidence", `${body.confidence.handicap} confidence`);
-          setText("#total-confidence", `${body.confidence.total} confidence`);
-          setText("#one-x-two-confidence", `${body.confidence["1x2"]} confidence`);
-
-          const riskTags = document.querySelector("#risk-tags");
-          riskTags.replaceChildren();
-          const tags = body.risk_tags.length ? body.risk_tags : ["none"];
-          for (const tag of tags) {
-            const chip = document.createElement("span");
-            chip.textContent = tag;
-            riskTags.appendChild(chip);
+          if (requestId !== workspaceRequestId) {
+            return;
           }
-          setText("#risk-summary", `${tags.length} shown`);
+
+          renderAnalysis(body);
           message.textContent = "Analysis ready";
         } catch (error) {
-          message.textContent = error.message;
-          setText("#source-status", "Error");
+          if (requestId === workspaceRequestId) {
+            message.textContent = error.message;
+            setText("#source-status", "Error");
+          }
+        } finally {
+          if (requestId === workspaceRequestId) {
+            setSourceBusy(false);
+          }
         }
       });
     </script>

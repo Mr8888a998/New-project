@@ -285,6 +285,15 @@ li + li {
   background: #1f2937;
 }
 
+#auto-analyze-button {
+  background: #153e75;
+}
+
+#auto-analyze-button:hover,
+#auto-analyze-button:focus-visible {
+  background: #0f2f5a;
+}
+
 #register-source-url-button,
 #discover-sources-button,
 #fetch-source-html-button {
