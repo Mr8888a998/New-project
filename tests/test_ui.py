@@ -4,6 +4,12 @@ import tomllib
 from fastapi.testclient import TestClient
 
 from handicap_ai.database import Database
+from handicap_ai.source_discovery import (
+    SourceLinkResult,
+    SourceLinkStatus,
+    register_fixture_source_url,
+)
+from handicap_ai.source_fetch import FetchHttpResponse, fetch_fixture_source_html
 from handicap_ai.ui import create_app
 from handicap_ai.world_cup_seed import FIFA_WORLD_CUP, import_world_cup_2026_seed
 
@@ -122,6 +128,160 @@ def test_candidate_analysis_endpoint_accepts_saved_html(tmp_path):
     body = response.json()
     assert body["match"] == "England vs Panama"
     assert body["coverage"] == "complete"
+
+
+def test_auto_analyze_candidate_endpoint_uses_cached_html(tmp_path):
+    db_path = tmp_path / "handicap.sqlite"
+    db = Database(db_path)
+    db.migrate()
+    import_world_cup_2026_seed(db)
+    fixture = db.find_tournament_fixtures(
+        FIFA_WORLD_CUP,
+        "2026",
+        "England",
+        "Panama",
+    )[0]
+    db.upsert_fixture_source_link(
+        fixture_id=int(fixture["fixture_id"]),
+        source="betexplorer",
+        html_path="tests/fixtures/betexplorer_match.html",
+        url="https://www.betexplorer.com/england-panama",
+        status="available",
+    )
+    app = create_app(db_path=db_path, cache_dir=tmp_path / "cache")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/auto-analyze-candidate",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "analysis_ready"
+    assert body["stage"] == "analyzed"
+    assert body["candidate"]["home_team"] == "England"
+    assert body["candidate"]["away_team"] == "Panama"
+    assert body["source_link"]["status"] == "available"
+    assert body["analysis"]["match"] == "England vs Panama"
+    assert body["analysis"]["picks"]["handicap"] in {"home", "away", "no_bet"}
+    assert body["analysis"]["picks"]["total"] in {"over", "under", "no_bet"}
+    assert body["analysis"]["picks"]["1x2"] in {"home", "draw", "away", "no_bet"}
+
+
+def test_auto_analyze_candidate_endpoint_can_discover_and_fetch(tmp_path):
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+
+    def discovery_runner(db, home_team, away_team, source):
+        return register_fixture_source_url(
+            db,
+            home_team=home_team,
+            away_team=away_team,
+            source=source,
+            url="https://www.betexplorer.com/england-panama",
+        )
+
+    def fetch_runner(db, home_team, away_team, source, cache_dir):
+        def http_get(url: str) -> FetchHttpResponse:
+            return FetchHttpResponse(url=url, status_code=200, text=html)
+
+        return fetch_fixture_source_html(
+            db,
+            home_team=home_team,
+            away_team=away_team,
+            source=source,
+            cache_dir=cache_dir,
+            http_get=http_get,
+        )
+
+    app = create_app(
+        db_path=tmp_path / "handicap.sqlite",
+        cache_dir=tmp_path / "cache",
+        auto_discovery_runner=discovery_runner,
+        auto_fetch_runner=fetch_runner,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/auto-analyze-candidate",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "analysis_ready"
+    assert body["source_link"]["status"] == "available"
+    assert Path(body["source_link"]["html_path"]).is_file()
+    assert body["analysis"]["coverage"] == "complete"
+
+
+def test_auto_analyze_candidate_endpoint_returns_manual_state(tmp_path):
+    def discovery_runner(db, home_team, away_team, source):
+        fixture = db.find_tournament_fixtures(
+            FIFA_WORLD_CUP,
+            "2026",
+            "England",
+            "Panama",
+        )[0]
+        return SourceLinkResult(
+            status=SourceLinkStatus.MANUAL_REQUIRED,
+            fixture_id=int(fixture["fixture_id"]),
+            source=source,
+            html_path=None,
+            url=None,
+            warnings=("No source URL found for England vs Panama",),
+        )
+
+    app = create_app(
+        db_path=tmp_path / "handicap.sqlite",
+        cache_dir=tmp_path / "cache",
+        auto_discovery_runner=discovery_runner,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/auto-analyze-candidate",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "needs_manual_source"
+    assert body["stage"] == "manual_required"
+    assert body["analysis"] is None
+    assert "No source URL found for England vs Panama" in body["warnings"]
+
+
+def test_auto_analyze_candidate_endpoint_rejects_unsupported_source(tmp_path):
+    app = create_app(
+        db_path=tmp_path / "handicap.sqlite",
+        cache_dir=tmp_path / "cache",
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/auto-analyze-candidate",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "unknown",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "unsupported source" in response.json()["detail"]
 
 
 def test_create_app_preserves_enriched_seed_fixture_metadata(tmp_path):

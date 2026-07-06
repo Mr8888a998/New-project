@@ -9,6 +9,12 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.requests import Request
 
+from handicap_ai.auto_analysis import (
+    AutoAnalyzeResult,
+    DiscoveryRunner,
+    FetchRunner,
+    auto_analyze_candidate,
+)
 from handicap_ai.candidate_search import FixtureCandidate, find_world_cup_candidates
 from handicap_ai.database import Database
 from handicap_ai.live_analysis import LiveAnalysisResult, analyze_saved_html
@@ -63,6 +69,12 @@ class SourceFetchRequest(BaseModel):
     response_html: str | None = None
 
 
+class AutoAnalyzeRequest(BaseModel):
+    home_team: str
+    away_team: str
+    source: str
+
+
 def _report_payload(result: LiveAnalysisResult) -> dict[str, object]:
     return {
         "match": f"{result.match['home_team']} vs {result.match['away_team']}",
@@ -114,7 +126,33 @@ def _source_link_payload(result: SourceLinkResult) -> dict[str, object]:
     }
 
 
-def create_app(db_path: Path, cache_dir: Path = Path("data/cache")) -> FastAPI:
+def _auto_analyze_payload(result: AutoAnalyzeResult) -> dict[str, object]:
+    return {
+        "status": result.status.value,
+        "stage": result.stage,
+        "warnings": list(result.warnings),
+        "candidate": (
+            _candidate_payload(result.candidate)
+            if result.candidate is not None
+            else None
+        ),
+        "source_link": (
+            _source_link_payload(result.source_link)
+            if result.source_link is not None
+            else None
+        ),
+        "analysis": (
+            _report_payload(result.analysis) if result.analysis is not None else None
+        ),
+    }
+
+
+def create_app(
+    db_path: Path,
+    cache_dir: Path = Path("data/cache"),
+    auto_discovery_runner: DiscoveryRunner | None = None,
+    auto_fetch_runner: FetchRunner | None = None,
+) -> FastAPI:
     app = FastAPI(title="Handicap AI")
     database = Database(db_path)
     database.migrate()
@@ -237,5 +275,21 @@ def create_app(db_path: Path, cache_dir: Path = Path("data/cache")) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return _source_link_payload(result)
+
+    @app.post("/api/auto-analyze-candidate")
+    def auto_analyze_candidate_endpoint(payload: AutoAnalyzeRequest):
+        try:
+            result = auto_analyze_candidate(
+                database,
+                home_team=payload.home_team,
+                away_team=payload.away_team,
+                source=payload.source,
+                cache_dir=cache_dir,
+                discovery_runner=auto_discovery_runner,
+                fetch_runner=auto_fetch_runner,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _auto_analyze_payload(result)
 
     return app
