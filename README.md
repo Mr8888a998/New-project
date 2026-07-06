@@ -42,6 +42,14 @@ Source discovery and fetching are user-triggered. If a site blocks automated
 access, paste a manually saved HTML path in the dashboard and use the saved-HTML
 analysis flow.
 
+## Auto Analyze From UI
+
+The dashboard can run the candidate workflow automatically after you enter home
+and away teams. Click `Auto analyze` to check the seeded World Cup fixture,
+reuse cached source HTML when available, or attempt source discovery and HTML
+fetch for the selected source. If the source blocks automation or no URL is
+found, the dashboard keeps the manual URL, fetch, and saved-HTML controls ready.
+
 ## Analyze Saved Odds HTML
 
 ```bash
