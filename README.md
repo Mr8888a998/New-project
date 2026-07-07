@@ -50,6 +50,38 @@ reuse cached source HTML when available, or attempt source discovery and HTML
 fetch for the selected source. If the source blocks automation or no URL is
 found, the dashboard keeps the manual URL, fetch, and saved-HTML controls ready.
 
+The v2 dashboard keeps the main input simple: enter the home team and away team,
+choose a source, then run `Auto analyze`. The analysis result includes the best
+available picks for:
+
+- Handicap
+- Total
+- 1X2
+
+The result panels also show opening/closing handicap, opening/closing total,
+water movement, closing 1X2 prices, market-disagreement score, per-market
+numeric score, recommendation reason, and risk tags.
+
+## Source Status And Backtest
+
+Use source status to see how many seeded World Cup fixtures already have
+registered source links or cached HTML:
+
+```bash
+handicap-ai source-status --db data/handicap_ai.sqlite --source betexplorer
+```
+
+Run a local historical backtest over finished matches already imported into the
+database:
+
+```bash
+handicap-ai backtest --db data/handicap_ai.sqlite --limit 50
+```
+
+The backtest reports picks, hits, misses, no-bets, pushes, and hit rate for
+handicap, total, and 1X2. By default it uses only earlier fixtures as comparison
+history when kickoff times are available.
+
 ## Analyze Saved Odds HTML
 
 ```bash
@@ -68,6 +100,8 @@ handicap-ai ui --db data/handicap_ai.sqlite --host 127.0.0.1 --port 8000
 Open `http://127.0.0.1:8000`, enter home and away team names, and click
 `Auto analyze` to run the candidate, source, fetch, and analysis flow. If a
 source blocks automation, use the manual URL, fetch, or saved HTML controls.
+Use the `Refresh source status` and `Run backtest` buttons to inspect data
+readiness and historical performance inside the same workspace.
 
 ## Output
 
@@ -81,6 +115,10 @@ The output includes:
 - Reasons
 - Risk tags
 - Source coverage
+- Feature panel
+- Scorecard
+- Source readiness
+- Backtest summary
 
 ## Source Boundaries
 
