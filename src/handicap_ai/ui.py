@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -18,6 +19,7 @@ from handicap_ai.auto_analysis import (
 from handicap_ai.candidate_search import FixtureCandidate, find_world_cup_candidates
 from handicap_ai.database import Database
 from handicap_ai.live_analysis import LiveAnalysisResult, analyze_saved_html
+from handicap_ai.scorecard import build_scorecard, feature_payload
 from handicap_ai.source_discovery import (
     SourceLinkResult,
     discover_fixture_source,
@@ -76,6 +78,7 @@ class AutoAnalyzeRequest(BaseModel):
 
 
 def _report_payload(result: LiveAnalysisResult) -> dict[str, object]:
+    scorecard = build_scorecard(result.features, result.report)
     return {
         "match": f"{result.match['home_team']} vs {result.match['away_team']}",
         "coverage": "complete" if result.coverage.is_complete else "incomplete",
@@ -92,6 +95,13 @@ def _report_payload(result: LiveAnalysisResult) -> dict[str, object]:
             "1x2": result.report.one_x_two.confidence,
         },
         "data_quality": result.report.data_quality_score,
+        "features": feature_payload(result.features),
+        "scores": asdict(scorecard),
+        "reasons": {
+            "handicap": result.report.handicap.reason,
+            "total": result.report.total.reason,
+            "1x2": result.report.one_x_two.reason,
+        },
     }
 
 
