@@ -33,3 +33,46 @@ def test_cli_import_and_analyze(tmp_path):
     assert "Handicap pick:" in analyze_result.output
     assert "Total pick:" in analyze_result.output
     assert "1X2 pick:" in analyze_result.output
+
+
+def test_backtest_command_prints_market_summary(tmp_path):
+    db_path = tmp_path / "handicap.sqlite"
+    runner = CliRunner()
+    import_result = runner.invoke(
+        app,
+        [
+            "import-football-data",
+            "--db",
+            str(db_path),
+            "--csv",
+            "tests/fixtures/football_data_sample.csv",
+            "--season",
+            "2026",
+        ],
+    )
+    assert import_result.exit_code == 0
+
+    result = runner.invoke(app, ["backtest", "--db", str(db_path), "--limit", "2"])
+
+    assert result.exit_code == 0
+    assert "Backtest" in result.output
+    assert "handicap" in result.output
+    assert "total" in result.output
+    assert "1x2" in result.output
+
+
+def test_source_status_command_prints_readiness(tmp_path):
+    db_path = tmp_path / "handicap.sqlite"
+    runner = CliRunner()
+    seed_result = runner.invoke(app, ["seed-world-cup", "--db", str(db_path)])
+    assert seed_result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        ["source-status", "--db", str(db_path), "--source", "betexplorer"],
+    )
+
+    assert result.exit_code == 0
+    assert "Source status" in result.output
+    assert "betexplorer" in result.output
+    assert "pending" in result.output

@@ -276,6 +276,43 @@ li + li {
   color: var(--muted);
 }
 
+.metric-list,
+.reason-list {
+  display: grid;
+  gap: 8px;
+}
+
+.metric-list span,
+.reason-list p {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+}
+
+.feature-grid,
+.score-grid {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: minmax(100px, 1fr) minmax(80px, 0.8fr);
+}
+
+.feature-grid span,
+.score-grid span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.feature-grid strong,
+.score-grid strong {
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 #find-candidates-button {
   background: #334155;
 }
@@ -296,7 +333,9 @@ li + li {
 
 #register-source-url-button,
 #discover-sources-button,
-#fetch-source-html-button {
+#fetch-source-html-button,
+#refresh-source-status-button,
+#run-backtest-button {
   background: #334155;
 }
 
@@ -305,7 +344,11 @@ li + li {
 #discover-sources-button:hover,
 #discover-sources-button:focus-visible,
 #fetch-source-html-button:hover,
-#fetch-source-html-button:focus-visible {
+#fetch-source-html-button:focus-visible,
+#refresh-source-status-button:hover,
+#refresh-source-status-button:focus-visible,
+#run-backtest-button:hover,
+#run-backtest-button:focus-visible {
   background: #1f2937;
 }
 

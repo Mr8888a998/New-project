@@ -16,6 +16,7 @@ from handicap_ai.auto_analysis import (
     FetchRunner,
     auto_analyze_candidate,
 )
+from handicap_ai.backtest import run_backtest
 from handicap_ai.candidate_search import FixtureCandidate, find_world_cup_candidates
 from handicap_ai.database import Database
 from handicap_ai.live_analysis import LiveAnalysisResult, analyze_saved_html
@@ -27,6 +28,7 @@ from handicap_ai.source_discovery import (
     register_fixture_source_url,
 )
 from handicap_ai.source_fetch import FetchHttpResponse, fetch_fixture_source_html
+from handicap_ai.source_status import summarize_world_cup_sources
 from handicap_ai.world_cup_seed import import_world_cup_2026_seed
 
 
@@ -75,6 +77,11 @@ class AutoAnalyzeRequest(BaseModel):
     home_team: str
     away_team: str
     source: str
+
+
+class BacktestRequest(BaseModel):
+    limit: int | None = None
+    prior_only: bool = True
 
 
 def _report_payload(result: LiveAnalysisResult) -> dict[str, object]:
@@ -301,5 +308,20 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return _auto_analyze_payload(result)
+
+    @app.get("/api/source-status")
+    def source_status_endpoint(source: str = "betexplorer"):
+        try:
+            return summarize_world_cup_sources(database, source=source).to_dict()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/backtest")
+    def backtest_endpoint(payload: BacktestRequest):
+        return run_backtest(
+            database,
+            limit=payload.limit,
+            prior_only=payload.prior_only,
+        ).to_dict()
 
     return app

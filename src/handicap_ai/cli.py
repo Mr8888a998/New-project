@@ -9,6 +9,7 @@ import typer
 import uvicorn
 
 from handicap_ai.adapters.football_data import FootballDataCsvAdapter
+from handicap_ai.backtest import run_backtest
 from handicap_ai.candidate_search import find_world_cup_candidates
 from handicap_ai.database import Database
 from handicap_ai.features import build_match_features
@@ -21,6 +22,7 @@ from handicap_ai.report import render_text_report
 from handicap_ai.resolver import MatchResolver
 from handicap_ai.settlement import settle_handicap, settle_one_x_two, settle_total
 from handicap_ai.similarity import SimilarityCandidate, SimilarityResult, find_similar_matches
+from handicap_ai.source_status import summarize_world_cup_sources
 from handicap_ai.source_discovery import (
     SourceLinkResult,
     discover_fixture_source,
@@ -231,6 +233,45 @@ def analyze(
     similar = _similar_matches(database, match_id, features)
     report = RecommendationEngine().recommend(features, similar=similar)
     console.print(render_text_report(match["home_team"], match["away_team"], report))
+
+
+@app.command("backtest")
+def backtest(
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+    limit: int | None = typer.Option(None, "--limit"),
+    prior_only: bool = typer.Option(True, "--prior-only/--all-history"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    report = run_backtest(database, limit=limit, prior_only=prior_only)
+    console.print(f"Backtest matches: {report.total_matches}")
+    for market, summary in report.markets.items():
+        console.print(
+            f"{market}: picks={summary.picks} hits={summary.hits} "
+            f"misses={summary.misses} no_bets={summary.no_bets} "
+            f"pushes={summary.pushes} hit_rate={summary.hit_rate:.2%}"
+        )
+
+
+@app.command("source-status")
+def source_status(
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+    source: str = typer.Option("betexplorer", "--source"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    import_world_cup_2026_seed(database, overwrite_existing=False)
+    try:
+        summary = summarize_world_cup_sources(database, source=source)
+    except ValueError as exc:
+        console.print(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+    console.print(
+        f"Source status: {summary.source} "
+        f"fixtures={summary.total_fixtures} available_html={summary.available_html}"
+    )
+    for status, count in summary.by_status.items():
+        console.print(f"{status}: {count}")
 
 
 @app.command("import-history-folder")

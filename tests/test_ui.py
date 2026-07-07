@@ -36,6 +36,9 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "Register source URL" in response.text
     assert "Fetch source HTML" in response.text
     assert "Source links" in response.text
+    assert "Source readiness" in response.text
+    assert "Feature panel" in response.text
+    assert "Backtest" in response.text
     assert 'id="source-url"' in response.text
     assert "required" in response.text
     assert "checkValidity()" in response.text
@@ -90,6 +93,34 @@ def test_saved_html_analysis_endpoint_returns_recommendations(tmp_path):
     assert body["picks"]["handicap"] in {"home", "away", "no_bet"}
     assert body["picks"]["total"] in {"over", "under", "no_bet"}
     assert body["picks"]["1x2"] in {"home", "draw", "away", "no_bet"}
+    assert body["features"]["handicap"]["open"] == -1.75
+    assert body["scores"]["total"]["pick"] in {"over", "under", "no_bet"}
+    assert body["reasons"]["handicap"]
+
+
+def test_source_status_endpoint_returns_world_cup_readiness(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.get("/api/source-status?source=betexplorer")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "betexplorer"
+    assert body["total_fixtures"] == 72
+    assert body["by_status"]["pending"] == 72
+
+
+def test_backtest_endpoint_returns_market_summary(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.post("/api/backtest", json={"limit": 10})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body["markets"]) == {"handicap", "total", "1x2"}
+    assert body["markets"]["handicap"]["picks"] >= 0
 
 
 def test_candidate_endpoint_returns_group_fixture(tmp_path):
