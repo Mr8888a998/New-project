@@ -76,3 +76,16 @@ def test_source_status_command_prints_readiness(tmp_path):
     assert "Source status" in result.output
     assert "betexplorer" in result.output
     assert "pending" in result.output
+
+
+def test_prepare_demo_data_command_seeds_usable_local_data(tmp_path):
+    db_path = tmp_path / "handicap.sqlite"
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["prepare-demo-data", "--db", str(db_path)])
+
+    assert result.exit_code == 0
+    assert "Prepared demo data" in result.output
+    assert "fixtures=72" in result.output
+    assert "available_html=1" in result.output
+    assert "finished_matches=" in result.output

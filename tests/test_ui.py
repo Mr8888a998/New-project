@@ -35,6 +35,9 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "Discover sources" in response.text
     assert "Register source URL" in response.text
     assert "Fetch source HTML" in response.text
+    assert "Prepare demo data" in response.text
+    assert 'id="prepare-demo-data-button"' in response.text
+    assert "/api/prepare-demo-data" in response.text
     assert "Source links" in response.text
     assert "Source readiness" in response.text
     assert "Feature panel" in response.text
@@ -121,6 +124,20 @@ def test_backtest_endpoint_returns_market_summary(tmp_path):
     body = response.json()
     assert set(body["markets"]) == {"handicap", "total", "1x2"}
     assert body["markets"]["handicap"]["picks"] >= 0
+
+
+def test_prepare_demo_data_endpoint_seeds_usable_local_data(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.post("/api/prepare-demo-data")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["world_cup_fixtures"] == 72
+    assert body["finished_matches"] >= 2
+    assert body["available_html"] == 1
+    assert body["source_registered"] is True
 
 
 def test_candidate_endpoint_returns_group_fixture(tmp_path):

@@ -104,6 +104,7 @@
               <button id="register-source-url-button" type="button">Register source URL</button>
               <button id="discover-sources-button" type="button">Discover sources</button>
               <button id="fetch-source-html-button" type="button">Fetch source HTML</button>
+              <button id="prepare-demo-data-button" type="button">Prepare demo data</button>
               <button id="refresh-source-status-button" type="button">Refresh source status</button>
               <button id="run-backtest-button" type="button">Run backtest</button>
             </div>
@@ -199,6 +200,7 @@
       const registerSourceUrlButton = document.querySelector("#register-source-url-button");
       const discoverSourcesButton = document.querySelector("#discover-sources-button");
       const fetchSourceHtmlButton = document.querySelector("#fetch-source-html-button");
+      const prepareDemoDataButton = document.querySelector("#prepare-demo-data-button");
       const refreshSourceStatusButton = document.querySelector("#refresh-source-status-button");
       const runBacktestButton = document.querySelector("#run-backtest-button");
       let workspaceRequestId = 0;
@@ -225,6 +227,7 @@
         registerSourceUrlButton.disabled = isBusy;
         discoverSourcesButton.disabled = isBusy;
         fetchSourceHtmlButton.disabled = isBusy;
+        prepareDemoDataButton.disabled = isBusy;
         refreshSourceStatusButton.disabled = isBusy;
         runBacktestButton.disabled = isBusy;
       }
@@ -590,6 +593,26 @@
         }
       }
 
+      async function prepareDemoData() {
+        setSourceBusy(true);
+        message.textContent = "Preparing demo data";
+        try {
+          const response = await fetch(`/api/prepare-demo-data?source=${encodeURIComponent(selectedSource())}`, {
+            method: "POST",
+          });
+          if (!response.ok) {
+            throw new Error(await errorMessage(response));
+          }
+          const body = await response.json();
+          setText("#source-readiness-status", `${body.available_html}/${body.world_cup_fixtures} cached`);
+          message.textContent = `Prepared ${body.finished_matches} finished matches`;
+        } finally {
+          setSourceBusy(false);
+        }
+        await refreshSourceStatus();
+        await runBacktest();
+      }
+
       async function autoAnalyze() {
         const requestId = workspaceRequestId + 1;
         workspaceRequestId = requestId;
@@ -708,6 +731,15 @@
         } catch (error) {
           message.textContent = error.message;
           setText("#source-link-status", "Error");
+        }
+      });
+
+      prepareDemoDataButton.addEventListener("click", async () => {
+        try {
+          await prepareDemoData();
+        } catch (error) {
+          message.textContent = error.message;
+          setText("#source-readiness-status", "Error");
         }
       });
 

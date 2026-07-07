@@ -30,6 +30,21 @@ handicap-ai find-candidates --db data/handicap_ai.sqlite --home England --away G
 The World Cup candidate workflow lets you enter home and away team names,
 confirm a seeded group-stage fixture, then analyze a saved odds HTML file.
 
+## Prepare Local Demo Data
+
+Use this when the dashboard is empty and you want a usable local dataset in one
+step:
+
+```bash
+handicap-ai prepare-demo-data --db data/handicap_ai.sqlite
+```
+
+This seeds the 2026 World Cup teams and fixtures, imports the bundled historical
+sample data, and registers an available BetExplorer HTML page for England vs
+Panama when the local fixture/cache file exists. In the dashboard, click
+`Prepare demo data` to run the same workflow and refresh source readiness and
+backtest panels.
+
 ## Discover and Cache Source HTML
 
 ```bash

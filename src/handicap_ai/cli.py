@@ -17,6 +17,7 @@ from handicap_ai.history_import import import_history_folder
 from handicap_ai.ingest import ingest_bundles
 from handicap_ai.labels import label_to_recommendation_bucket
 from handicap_ai.live_analysis import analyze_saved_html
+from handicap_ai.demo_data import prepare_demo_data
 from handicap_ai.recommendation import RecommendationEngine
 from handicap_ai.report import render_text_report
 from handicap_ai.resolver import MatchResolver
@@ -272,6 +273,37 @@ def source_status(
     )
     for status, count in summary.by_status.items():
         console.print(f"{status}: {count}")
+
+
+@app.command("prepare-demo-data")
+def prepare_demo_data_command(
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+    source: str = typer.Option("betexplorer", "--source"),
+    football_data_csv: Path = typer.Option(
+        Path("tests/fixtures/football_data_sample.csv"),
+        "--football-data-csv",
+    ),
+    history_folder: Path = typer.Option(
+        Path("tests/fixtures/history_folder"),
+        "--history-folder",
+    ),
+    cached_html: Path | None = typer.Option(None, "--cached-html"),
+) -> None:
+    database = Database(db)
+    summary = prepare_demo_data(
+        database,
+        source=source,
+        football_data_csv=football_data_csv,
+        history_folder=history_folder,
+        cached_html_path=cached_html,
+    )
+    console.print(
+        f"Prepared demo data: fixtures={summary.world_cup_fixtures} "
+        f"finished_matches={summary.finished_matches} "
+        f"available_html={summary.available_html}"
+    )
+    for warning in summary.warnings:
+        console.print(f"Warning: {warning}")
 
 
 @app.command("import-history-folder")

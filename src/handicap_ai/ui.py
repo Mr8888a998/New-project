@@ -19,6 +19,7 @@ from handicap_ai.auto_analysis import (
 from handicap_ai.backtest import run_backtest
 from handicap_ai.candidate_search import FixtureCandidate, find_world_cup_candidates
 from handicap_ai.database import Database
+from handicap_ai.demo_data import prepare_demo_data
 from handicap_ai.live_analysis import LiveAnalysisResult, analyze_saved_html
 from handicap_ai.scorecard import build_scorecard, feature_payload
 from handicap_ai.source_discovery import (
@@ -323,5 +324,12 @@ def create_app(
             limit=payload.limit,
             prior_only=payload.prior_only,
         ).to_dict()
+
+    @app.post("/api/prepare-demo-data")
+    def prepare_demo_data_endpoint(source: str = "betexplorer"):
+        try:
+            return prepare_demo_data(database, source=source).to_dict()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return app
