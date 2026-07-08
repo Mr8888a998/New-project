@@ -225,7 +225,12 @@ def _source_from_cache_path(cache_root: Path, path: Path) -> str:
         relative = path.relative_to(cache_root)
     except ValueError:
         return ""
-    return normalize_source(relative.parts[0]) if relative.parts else ""
+    for part in relative.parts:
+        try:
+            return normalize_source(part)
+        except ValueError:
+            continue
+    return relative.parts[0] if relative.parts else ""
 
 
 def _adapter_for_source(source: str):

@@ -69,3 +69,18 @@ def test_scan_cache_html_limits_file_rows_without_changing_totals(tmp_path):
     assert report.total_files == 3
     assert report.invalid_files == 3
     assert len(report.files) == 2
+
+
+def test_scan_cache_html_infers_source_from_nested_cache_folder(tmp_path):
+    db = Database(tmp_path / "handicap.sqlite")
+    db.migrate()
+    cache_dir = tmp_path / "cache"
+    nested_html = cache_dir / "manual" / "betexplorer" / "bad.html"
+    nested_html.parent.mkdir(parents=True)
+    nested_html.write_text("<html>bad</html>", encoding="utf-8")
+
+    report = scan_cache_html(db, cache_dir=cache_dir)
+
+    assert report.total_files == 1
+    assert report.files[0].source == "betexplorer"
+    assert report.files[0].status == "invalid"
