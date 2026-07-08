@@ -116,6 +116,7 @@ def _report_payload(result: LiveAnalysisResult) -> dict[str, object]:
         "data_quality": result.report.data_quality_score,
         "features": feature_payload(result.features),
         "scores": asdict(scorecard),
+        "market_scores": scorecard.market_scores(),
         "reasons": {
             "handicap": result.report.handicap.reason,
             "total": result.report.total.reason,

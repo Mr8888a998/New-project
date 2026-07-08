@@ -33,6 +33,8 @@ def test_cli_import_and_analyze(tmp_path):
     assert "Handicap pick:" in analyze_result.output
     assert "Total pick:" in analyze_result.output
     assert "1X2 pick:" in analyze_result.output
+    assert "Model scores" in analyze_result.output
+    assert "- handicap:" in analyze_result.output
 
 
 def test_backtest_command_prints_market_summary(tmp_path):

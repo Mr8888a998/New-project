@@ -17,6 +17,14 @@ class MarketScore:
     score: int
     reason: str
 
+    def to_model_score(self) -> dict[str, object]:
+        return {
+            "pick": self.pick,
+            "score": self.score,
+            "confidence": self.confidence,
+            "reason": self.reason,
+        }
+
 
 @dataclass(frozen=True)
 class Scorecard:
@@ -25,6 +33,13 @@ class Scorecard:
     one_x_two: MarketScore
     overall_score: int
     feature_payload: dict[str, object]
+
+    def market_scores(self) -> dict[str, dict[str, object]]:
+        return {
+            "handicap": self.handicap.to_model_score(),
+            "total": self.total.to_model_score(),
+            "1x2": self.one_x_two.to_model_score(),
+        }
 
 
 def build_scorecard(features: MatchFeatures, report: RecommendationReport) -> Scorecard:

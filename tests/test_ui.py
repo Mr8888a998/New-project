@@ -112,6 +112,14 @@ def test_saved_html_analysis_endpoint_returns_recommendations(tmp_path):
     assert body["features"]["handicap"]["open"] == -1.75
     assert body["scores"]["total"]["pick"] in {"over", "under", "no_bet"}
     assert body["reasons"]["handicap"]
+    assert set(body["market_scores"]) == {"handicap", "total", "1x2"}
+    assert set(body["market_scores"]["handicap"]) == {
+        "pick",
+        "score",
+        "confidence",
+        "reason",
+    }
+    assert 0 <= body["market_scores"]["handicap"]["score"] <= 100
 
 
 def test_source_status_endpoint_returns_world_cup_readiness(tmp_path):

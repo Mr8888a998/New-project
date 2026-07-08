@@ -62,6 +62,14 @@ def test_build_scorecard_outputs_numeric_market_scores():
     assert scorecard.total.score > scorecard.handicap.score
     assert scorecard.one_x_two.market == "1x2"
     assert 0 <= scorecard.overall_score <= 100
+    market_scores = scorecard.market_scores()
+    assert set(market_scores) == {"handicap", "total", "1x2"}
+    assert market_scores["handicap"] == {
+        "pick": "away",
+        "score": scorecard.handicap.score,
+        "confidence": "medium",
+        "reason": "similar away support",
+    }
 
 
 def test_feature_payload_exposes_line_and_water_movement():

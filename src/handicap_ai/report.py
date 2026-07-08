@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from handicap_ai.models import Pick
 from handicap_ai.recommendation import MarketRecommendation, RecommendationReport
 
 
-def render_text_report(home: str, away: str, report: RecommendationReport) -> str:
+def render_text_report(
+    home: str,
+    away: str,
+    report: RecommendationReport,
+    market_scores: Mapping[str, Mapping[str, object]] | None = None,
+) -> str:
     recommendations = (report.handicap, report.total, report.one_x_two)
     risk_tags = report.risk_tags or ("none",)
 
@@ -29,6 +36,18 @@ def render_text_report(home: str, away: str, report: RecommendationReport) -> st
         "Risk tags",
         *[f"- {risk_tag}" for risk_tag in risk_tags],
     ]
+    if market_scores:
+        lines.extend(
+            [
+                "",
+                "Model scores",
+                *[
+                    _model_score_line(market, market_scores[market])
+                    for market in ("handicap", "total", "1x2")
+                    if market in market_scores
+                ],
+            ]
+        )
 
     return "\n".join(lines)
 
@@ -45,4 +64,13 @@ def _confidence_line(recommendation: MarketRecommendation) -> str:
         f"- {recommendation.market}: {recommendation.confidence} "
         f"({recommendation.sample_size} {sample_word}, "
         f"hit rate {recommendation.hit_rate:.2%})"
+    )
+
+
+def _model_score_line(market: str, score: Mapping[str, object]) -> str:
+    return (
+        f"- {market}: pick={score.get('pick', '-')} "
+        f"score={score.get('score', '-')} "
+        f"confidence={score.get('confidence', '-')} "
+        f"reason={score.get('reason', '-')}"
     )

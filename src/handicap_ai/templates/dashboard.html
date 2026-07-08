@@ -501,14 +501,15 @@
         setText("#match-title", body.match);
         setText("#coverage-status", body.coverage);
         setText("#data-quality", Number(body.data_quality).toFixed(2));
-        setText("#handicap-pick", body.picks.handicap);
-        setText("#total-pick", body.picks.total);
-        setText("#one-x-two-pick", body.picks["1x2"]);
-        setText("#handicap-confidence", `${body.confidence.handicap} confidence`);
-        setText("#total-confidence", `${body.confidence.total} confidence`);
-        setText("#one-x-two-confidence", `${body.confidence["1x2"]} confidence`);
+        const marketScores = body.market_scores || {};
+        setText("#handicap-pick", marketScores.handicap?.pick || body.picks.handicap);
+        setText("#total-pick", marketScores.total?.pick || body.picks.total);
+        setText("#one-x-two-pick", marketScores["1x2"]?.pick || body.picks["1x2"]);
+        setText("#handicap-confidence", scoreSummary(marketScores.handicap, body.confidence.handicap));
+        setText("#total-confidence", scoreSummary(marketScores.total, body.confidence.total));
+        setText("#one-x-two-confidence", scoreSummary(marketScores["1x2"], body.confidence["1x2"]));
         renderFeatures(body.features || {});
-        renderScores(body.scores || {}, body.reasons || {});
+        renderScores(body.scores || {}, body.reasons || {}, marketScores);
 
         const riskTags = document.querySelector("#risk-tags");
         riskTags.replaceChildren();
@@ -523,6 +524,13 @@
 
       function displayValue(value) {
         return value === null || value === undefined ? "-" : String(value);
+      }
+
+      function scoreSummary(score, fallbackConfidence) {
+        if (!score) {
+          return `${fallbackConfidence} confidence`;
+        }
+        return `${score.confidence} confidence | score ${score.score}`;
       }
 
       function renderFeatures(features) {
@@ -542,17 +550,20 @@
         setText("#feature-summary", displayValue(features.data_quality));
       }
 
-      function renderScores(scores, reasons) {
+      function renderScores(scores, reasons, marketScores = {}) {
         setText("#score-overall", displayValue(scores.overall_score));
-        setText("#score-handicap", displayValue(scores.handicap?.score));
-        setText("#score-total", displayValue(scores.total?.score));
-        setText("#score-1x2", displayValue(scores.one_x_two?.score));
+        setText("#score-handicap", displayValue(marketScores.handicap?.score ?? scores.handicap?.score));
+        setText("#score-total", displayValue(marketScores.total?.score ?? scores.total?.score));
+        setText("#score-1x2", displayValue(marketScores["1x2"]?.score ?? scores.one_x_two?.score));
 
         const reasonList = document.querySelector("#pick-reasons");
         reasonList.replaceChildren();
         for (const market of ["handicap", "total", "1x2"]) {
           const item = document.createElement("p");
-          item.textContent = `${market}: ${reasons[market] || "No reason"}`;
+          const score = marketScores[market];
+          item.textContent = score
+            ? `${market}: ${score.pick} | score ${score.score} | ${score.reason}`
+            : `${market}: ${reasons[market] || "No reason"}`;
           reasonList.appendChild(item);
         }
       }

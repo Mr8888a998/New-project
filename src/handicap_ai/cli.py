@@ -23,6 +23,7 @@ from handicap_ai.demo_data import prepare_demo_data
 from handicap_ai.recommendation import RecommendationEngine
 from handicap_ai.report import render_text_report
 from handicap_ai.resolver import MatchResolver
+from handicap_ai.scorecard import build_scorecard
 from handicap_ai.settlement import settle_handicap, settle_one_x_two, settle_total
 from handicap_ai.similarity import SimilarityCandidate, SimilarityResult, find_similar_matches
 from handicap_ai.source_checks import build_source_checks
@@ -270,7 +271,15 @@ def analyze(
     )
     similar = _similar_matches(database, match_id, features)
     report = RecommendationEngine().recommend(features, similar=similar)
-    console.print(render_text_report(match["home_team"], match["away_team"], report))
+    scorecard = build_scorecard(features, report)
+    console.print(
+        render_text_report(
+            match["home_team"],
+            match["away_team"],
+            report,
+            scorecard.market_scores(),
+        )
+    )
 
 
 @app.command("backtest")
@@ -463,11 +472,13 @@ def scrape_match(
         f"Scraped {result.match['home_team']} vs {result.match['away_team']} from {source}"
     )
     console.print(f"Source coverage: {coverage_label}")
+    scorecard = build_scorecard(result.features, result.report)
     console.print(
         render_text_report(
             result.match["home_team"],
             result.match["away_team"],
             result.report,
+            scorecard.market_scores(),
         )
     )
 
