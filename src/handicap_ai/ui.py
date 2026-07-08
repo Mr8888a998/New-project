@@ -22,6 +22,7 @@ from handicap_ai.database import Database
 from handicap_ai.demo_data import prepare_demo_data
 from handicap_ai.live_analysis import LiveAnalysisResult, analyze_saved_html
 from handicap_ai.scorecard import build_scorecard, feature_payload
+from handicap_ai.source_matrix import build_source_matrix
 from handicap_ai.source_discovery import (
     SourceLinkResult,
     discover_fixture_source,
@@ -316,6 +317,10 @@ def create_app(
             return summarize_world_cup_sources(database, source=source).to_dict()
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/source-matrix")
+    def source_matrix_endpoint():
+        return build_source_matrix(database).to_dict()
 
     @app.post("/api/backtest")
     def backtest_endpoint(payload: BacktestRequest):

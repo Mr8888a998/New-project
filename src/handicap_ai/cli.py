@@ -23,6 +23,7 @@ from handicap_ai.report import render_text_report
 from handicap_ai.resolver import MatchResolver
 from handicap_ai.settlement import settle_handicap, settle_one_x_two, settle_total
 from handicap_ai.similarity import SimilarityCandidate, SimilarityResult, find_similar_matches
+from handicap_ai.source_matrix import build_source_matrix
 from handicap_ai.source_status import summarize_world_cup_sources
 from handicap_ai.source_discovery import (
     SourceLinkResult,
@@ -273,6 +274,29 @@ def source_status(
     )
     for status, count in summary.by_status.items():
         console.print(f"{status}: {count}")
+
+
+@app.command("source-matrix")
+def source_matrix(
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+    season: str = typer.Option("2026", "--season"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    import_world_cup_2026_seed(database, overwrite_existing=False)
+    matrix = build_source_matrix(database, season=season)
+    console.print(
+        f"Source matrix: fixtures={matrix.total_fixtures} "
+        f"cells={matrix.total_source_cells}"
+    )
+    for source, summary in matrix.sources.items():
+        counts = " ".join(
+            f"{status}={count}" for status, count in summary.by_status.items()
+        )
+        console.print(
+            f"{source}: cached={summary.available_html} "
+            f"urls={summary.registered_urls} {counts}"
+        )
 
 
 @app.command("prepare-demo-data")

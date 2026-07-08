@@ -40,6 +40,9 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "/api/prepare-demo-data" in response.text
     assert "Source links" in response.text
     assert "Source readiness" in response.text
+    assert "Source matrix" in response.text
+    assert 'id="refresh-source-matrix-button"' in response.text
+    assert "/api/source-matrix" in response.text
     assert "Feature panel" in response.text
     assert "Backtest" in response.text
     assert 'id="source-url"' in response.text
@@ -112,6 +115,20 @@ def test_source_status_endpoint_returns_world_cup_readiness(tmp_path):
     assert body["source"] == "betexplorer"
     assert body["total_fixtures"] == 72
     assert body["by_status"]["pending"] == 72
+
+
+def test_source_matrix_endpoint_returns_two_source_summary(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.get("/api/source-matrix")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_fixtures"] == 72
+    assert body["total_source_cells"] == 144
+    assert body["sources"]["betexplorer"]["by_status"]["pending"] == 72
+    assert body["sources"]["oddsportal"]["by_status"]["pending"] == 72
 
 
 def test_backtest_endpoint_returns_market_summary(tmp_path):

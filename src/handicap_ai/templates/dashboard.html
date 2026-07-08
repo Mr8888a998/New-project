@@ -106,6 +106,7 @@
               <button id="fetch-source-html-button" type="button">Fetch source HTML</button>
               <button id="prepare-demo-data-button" type="button">Prepare demo data</button>
               <button id="refresh-source-status-button" type="button">Refresh source status</button>
+              <button id="refresh-source-matrix-button" type="button">Refresh source matrix</button>
               <button id="run-backtest-button" type="button">Run backtest</button>
             </div>
             <div id="source-link-list" class="source-link-list">
@@ -120,6 +121,16 @@
             </div>
             <div id="source-readiness-list" class="metric-list">
               <span>Pending source summary</span>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <span class="label">Source matrix</span>
+              <strong id="source-matrix-status">Not loaded</strong>
+            </div>
+            <div id="source-matrix-list" class="metric-list">
+              <span>Scan BetExplorer and OddsPortal coverage.</span>
             </div>
           </article>
 
@@ -202,6 +213,7 @@
       const fetchSourceHtmlButton = document.querySelector("#fetch-source-html-button");
       const prepareDemoDataButton = document.querySelector("#prepare-demo-data-button");
       const refreshSourceStatusButton = document.querySelector("#refresh-source-status-button");
+      const refreshSourceMatrixButton = document.querySelector("#refresh-source-matrix-button");
       const runBacktestButton = document.querySelector("#run-backtest-button");
       let workspaceRequestId = 0;
 
@@ -229,6 +241,7 @@
         fetchSourceHtmlButton.disabled = isBusy;
         prepareDemoDataButton.disabled = isBusy;
         refreshSourceStatusButton.disabled = isBusy;
+        refreshSourceMatrixButton.disabled = isBusy;
         runBacktestButton.disabled = isBusy;
       }
 
@@ -538,6 +551,23 @@
         }
       }
 
+      function renderSourceMatrix(body) {
+        setText(
+          "#source-matrix-status",
+          `${body.total_source_cells} source checks`
+        );
+        const list = document.querySelector("#source-matrix-list");
+        list.replaceChildren();
+        for (const [source, summary] of Object.entries(body.sources || {})) {
+          const counts = Object.entries(summary.by_status || {})
+            .map(([status, count]) => `${status}: ${count}`)
+            .join(" | ");
+          const item = document.createElement("span");
+          item.textContent = `${source}: cached ${summary.available_html}, urls ${summary.registered_urls}, ${counts}`;
+          list.appendChild(item);
+        }
+      }
+
       function clearAnalysis() {
         setText("#match-title", "Match pending");
         setText("#coverage-status", "Pending");
@@ -569,6 +599,21 @@
           }
           renderSourceReadiness(await response.json());
           message.textContent = "Source readiness loaded";
+        } finally {
+          setSourceBusy(false);
+        }
+      }
+
+      async function refreshSourceMatrix() {
+        setSourceBusy(true);
+        message.textContent = "Refreshing source matrix";
+        try {
+          const response = await fetch("/api/source-matrix");
+          if (!response.ok) {
+            throw new Error(await errorMessage(response));
+          }
+          renderSourceMatrix(await response.json());
+          message.textContent = "Source matrix loaded";
         } finally {
           setSourceBusy(false);
         }
@@ -610,6 +655,7 @@
           setSourceBusy(false);
         }
         await refreshSourceStatus();
+        await refreshSourceMatrix();
         await runBacktest();
       }
 
@@ -749,6 +795,15 @@
         } catch (error) {
           message.textContent = error.message;
           setText("#source-readiness-status", "Error");
+        }
+      });
+
+      refreshSourceMatrixButton.addEventListener("click", async () => {
+        try {
+          await refreshSourceMatrix();
+        } catch (error) {
+          message.textContent = error.message;
+          setText("#source-matrix-status", "Error");
         }
       });
 
