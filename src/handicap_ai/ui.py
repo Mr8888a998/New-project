@@ -17,6 +17,7 @@ from handicap_ai.auto_analysis import (
     auto_analyze_candidate,
 )
 from handicap_ai.backtest import run_backtest
+from handicap_ai.cache_scan import scan_cache_html
 from handicap_ai.candidate_search import FixtureCandidate, find_world_cup_candidates
 from handicap_ai.database import Database
 from handicap_ai.demo_data import prepare_demo_data
@@ -326,6 +327,10 @@ def create_app(
     @app.get("/api/source-checks")
     def source_checks_endpoint(limit: int | None = 50, action: str | None = None):
         return build_source_checks(database, limit=limit, action=action).to_dict()
+
+    @app.get("/api/cache-scan")
+    def cache_scan_endpoint(limit: int | None = 50):
+        return scan_cache_html(database, cache_dir=cache_dir, limit=limit).to_dict()
 
     @app.post("/api/backtest")
     def backtest_endpoint(payload: BacktestRequest):

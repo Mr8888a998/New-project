@@ -108,6 +108,7 @@
               <button id="refresh-source-status-button" type="button">Refresh source status</button>
               <button id="refresh-source-matrix-button" type="button">Refresh source matrix</button>
               <button id="refresh-source-checks-button" type="button">Batch source checks</button>
+              <button id="refresh-cache-scan-button" type="button">Cache HTML scan</button>
               <button id="run-backtest-button" type="button">Run backtest</button>
             </div>
             <div id="source-link-list" class="source-link-list">
@@ -142,6 +143,16 @@
             </div>
             <div id="source-checks-list" class="metric-list">
               <span>Batch check fixture source actions.</span>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <span class="label">Cache HTML scan</span>
+              <strong id="cache-scan-status">Not loaded</strong>
+            </div>
+            <div id="cache-scan-list" class="metric-list">
+              <span>Scan local cached HTML availability.</span>
             </div>
           </article>
 
@@ -226,6 +237,7 @@
       const refreshSourceStatusButton = document.querySelector("#refresh-source-status-button");
       const refreshSourceMatrixButton = document.querySelector("#refresh-source-matrix-button");
       const refreshSourceChecksButton = document.querySelector("#refresh-source-checks-button");
+      const refreshCacheScanButton = document.querySelector("#refresh-cache-scan-button");
       const runBacktestButton = document.querySelector("#run-backtest-button");
       let workspaceRequestId = 0;
 
@@ -255,6 +267,7 @@
         refreshSourceStatusButton.disabled = isBusy;
         refreshSourceMatrixButton.disabled = isBusy;
         refreshSourceChecksButton.disabled = isBusy;
+        refreshCacheScanButton.disabled = isBusy;
         runBacktestButton.disabled = isBusy;
       }
 
@@ -600,6 +613,28 @@
         }
       }
 
+      function renderCacheScan(body) {
+        setText(
+          "#cache-scan-status",
+          `${body.total_files} files`
+        );
+        const list = document.querySelector("#cache-scan-list");
+        list.replaceChildren();
+        const summary = document.createElement("span");
+        summary.textContent = `parseable: ${body.parseable_files} | invalid: ${body.invalid_files} | orphan: ${body.orphan_files} | missing links: ${body.missing_linked_files}`;
+        list.appendChild(summary);
+        for (const file of (body.files || []).slice(0, 8)) {
+          const item = document.createElement("span");
+          item.textContent = `${file.source} ${file.status}: ${file.reason}`;
+          list.appendChild(item);
+        }
+        for (const link of (body.missing_links || []).slice(0, 4)) {
+          const item = document.createElement("span");
+          item.textContent = `${link.source} missing link ${link.home_team || "-"} vs ${link.away_team || "-"}: ${link.html_path}`;
+          list.appendChild(item);
+        }
+      }
+
       function clearAnalysis() {
         setText("#match-title", "Match pending");
         setText("#coverage-status", "Pending");
@@ -666,6 +701,21 @@
         }
       }
 
+      async function refreshCacheScan() {
+        setSourceBusy(true);
+        message.textContent = "Scanning cached HTML";
+        try {
+          const response = await fetch("/api/cache-scan?limit=20");
+          if (!response.ok) {
+            throw new Error(await errorMessage(response));
+          }
+          renderCacheScan(await response.json());
+          message.textContent = "Cache HTML scan loaded";
+        } finally {
+          setSourceBusy(false);
+        }
+      }
+
       async function runBacktest() {
         setSourceBusy(true);
         message.textContent = "Running backtest";
@@ -704,6 +754,7 @@
         await refreshSourceStatus();
         await refreshSourceMatrix();
         await refreshSourceChecks();
+        await refreshCacheScan();
         await runBacktest();
       }
 
@@ -861,6 +912,15 @@
         } catch (error) {
           message.textContent = error.message;
           setText("#source-checks-status", "Error");
+        }
+      });
+
+      refreshCacheScanButton.addEventListener("click", async () => {
+        try {
+          await refreshCacheScan();
+        } catch (error) {
+          message.textContent = error.message;
+          setText("#cache-scan-status", "Error");
         }
       });
 

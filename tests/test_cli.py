@@ -107,6 +107,24 @@ def test_source_checks_command_prints_batch_candidate_summary(tmp_path):
     assert "betexplorer needs_url" in result.output
 
 
+def test_cache_scan_command_prints_cache_availability(tmp_path):
+    db_path = tmp_path / "handicap.sqlite"
+    cache_dir = tmp_path / "cache"
+    html_path = cache_dir / "betexplorer" / "bad.html"
+    html_path.parent.mkdir(parents=True)
+    html_path.write_text("<html>bad</html>", encoding="utf-8")
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        ["cache-scan", "--db", str(db_path), "--cache-dir", str(cache_dir)],
+    )
+
+    assert result.exit_code == 0
+    assert "Cache scan: files=1 parseable=0 invalid=1 orphan=1 missing_links=0" in result.output
+    assert "betexplorer invalid" in result.output
+
+
 def test_prepare_demo_data_command_seeds_usable_local_data(tmp_path):
     db_path = tmp_path / "handicap.sqlite"
     runner = CliRunner()

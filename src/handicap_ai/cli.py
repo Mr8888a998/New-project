@@ -10,6 +10,7 @@ import uvicorn
 
 from handicap_ai.adapters.football_data import FootballDataCsvAdapter
 from handicap_ai.backtest import run_backtest
+from handicap_ai.cache_scan import scan_cache_html
 from handicap_ai.candidate_search import find_world_cup_candidates
 from handicap_ai.database import Database
 from handicap_ai.features import build_match_features
@@ -328,6 +329,32 @@ def source_checks(
         console.print(
             f"{check.source} {check.action} "
             f"{check.home_team} vs {check.away_team}: {check.reason}"
+        )
+
+
+@app.command("cache-scan")
+def cache_scan(
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+    cache_dir: Path = typer.Option(Path("data/cache"), "--cache-dir"),
+    limit: int | None = typer.Option(20, "--limit"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    report = scan_cache_html(database, cache_dir=cache_dir, limit=limit)
+    console.print(
+        "Cache scan: "
+        f"files={report.total_files} "
+        f"parseable={report.parseable_files} "
+        f"invalid={report.invalid_files} "
+        f"orphan={report.orphan_files} "
+        f"missing_links={report.missing_linked_files}"
+    )
+    for file in report.files:
+        console.print(f"{file.source} {file.status} {file.path}: {file.reason}")
+    for link in report.missing_links[: limit or len(report.missing_links)]:
+        console.print(
+            f"{link.source} missing_link "
+            f"{link.home_team or '-'} vs {link.away_team or '-'}: {link.html_path}"
         )
 
 

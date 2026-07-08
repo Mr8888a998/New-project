@@ -46,6 +46,9 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "Batch source checks" in response.text
     assert 'id="refresh-source-checks-button"' in response.text
     assert "/api/source-checks" in response.text
+    assert "Cache HTML scan" in response.text
+    assert 'id="refresh-cache-scan-button"' in response.text
+    assert "/api/cache-scan" in response.text
     assert "Feature panel" in response.text
     assert "Backtest" in response.text
     assert 'id="source-url"' in response.text
@@ -147,6 +150,24 @@ def test_source_checks_endpoint_returns_batch_candidate_actions(tmp_path):
     assert body["by_action"]["needs_url"] == 144
     assert len(body["checks"]) == 5
     assert body["checks"][0]["action"] == "needs_url"
+
+
+def test_cache_scan_endpoint_returns_cache_availability(tmp_path):
+    cache_dir = tmp_path / "cache"
+    html_path = cache_dir / "betexplorer" / "bad.html"
+    html_path.parent.mkdir(parents=True)
+    html_path.write_text("<html>bad</html>", encoding="utf-8")
+    app = create_app(db_path=tmp_path / "handicap.sqlite", cache_dir=cache_dir)
+    client = TestClient(app)
+
+    response = client.get("/api/cache-scan?limit=5")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_files"] == 1
+    assert body["invalid_files"] == 1
+    assert body["orphan_files"] == 1
+    assert body["files"][0]["status"] == "invalid"
 
 
 def test_backtest_endpoint_returns_market_summary(tmp_path):

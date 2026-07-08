@@ -94,6 +94,7 @@ cell:
 handicap-ai source-matrix --db data/handicap_ai.sqlite
 handicap-ai source-checks --db data/handicap_ai.sqlite --limit 20
 handicap-ai source-checks --db data/handicap_ai.sqlite --action needs_fetch
+handicap-ai cache-scan --db data/handicap_ai.sqlite --cache-dir data/cache
 ```
 
 Run a local historical backtest over finished matches already imported into the
