@@ -337,6 +337,7 @@ li + li {
 #prepare-demo-data-button,
 #refresh-source-status-button,
 #refresh-source-matrix-button,
+#refresh-source-checks-button,
 #run-backtest-button {
   background: #334155;
 }
@@ -353,6 +354,8 @@ li + li {
 #refresh-source-status-button:focus-visible,
 #refresh-source-matrix-button:hover,
 #refresh-source-matrix-button:focus-visible,
+#refresh-source-checks-button:hover,
+#refresh-source-checks-button:focus-visible,
 #run-backtest-button:hover,
 #run-backtest-button:focus-visible {
   background: #1f2937;

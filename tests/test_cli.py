@@ -93,6 +93,20 @@ def test_source_matrix_command_prints_two_source_summary(tmp_path):
     assert "pending=72" in result.output
 
 
+def test_source_checks_command_prints_batch_candidate_summary(tmp_path):
+    db_path = tmp_path / "handicap.sqlite"
+    runner = CliRunner()
+    seed_result = runner.invoke(app, ["seed-world-cup", "--db", str(db_path)])
+    assert seed_result.exit_code == 0
+
+    result = runner.invoke(app, ["source-checks", "--db", str(db_path), "--limit", "3"])
+
+    assert result.exit_code == 0
+    assert "Source checks: fixtures=72 checks=144" in result.output
+    assert "needs_url=144" in result.output
+    assert "betexplorer needs_url" in result.output
+
+
 def test_prepare_demo_data_command_seeds_usable_local_data(tmp_path):
     db_path = tmp_path / "handicap.sqlite"
     runner = CliRunner()

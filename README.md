@@ -86,6 +86,16 @@ registered source links or cached HTML:
 handicap-ai source-status --db data/handicap_ai.sqlite --source betexplorer
 ```
 
+Use the source matrix and batch source checks to inspect BetExplorer and
+OddsPortal coverage together, then see the next action for each fixture/source
+cell:
+
+```bash
+handicap-ai source-matrix --db data/handicap_ai.sqlite
+handicap-ai source-checks --db data/handicap_ai.sqlite --limit 20
+handicap-ai source-checks --db data/handicap_ai.sqlite --action needs_fetch
+```
+
 Run a local historical backtest over finished matches already imported into the
 database:
 

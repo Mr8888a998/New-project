@@ -23,6 +23,7 @@ from handicap_ai.report import render_text_report
 from handicap_ai.resolver import MatchResolver
 from handicap_ai.settlement import settle_handicap, settle_one_x_two, settle_total
 from handicap_ai.similarity import SimilarityCandidate, SimilarityResult, find_similar_matches
+from handicap_ai.source_checks import build_source_checks
 from handicap_ai.source_matrix import build_source_matrix
 from handicap_ai.source_status import summarize_world_cup_sources
 from handicap_ai.source_discovery import (
@@ -296,6 +297,37 @@ def source_matrix(
         console.print(
             f"{source}: cached={summary.available_html} "
             f"urls={summary.registered_urls} {counts}"
+        )
+
+
+@app.command("source-checks")
+def source_checks(
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+    season: str = typer.Option("2026", "--season"),
+    action: str | None = typer.Option(None, "--action"),
+    limit: int | None = typer.Option(20, "--limit"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    import_world_cup_2026_seed(database, overwrite_existing=False)
+    report = build_source_checks(
+        database,
+        season=season,
+        action=action,
+        limit=limit,
+    )
+    counts = " ".join(
+        f"{name}={count}" for name, count in report.by_action.items()
+    )
+    console.print(
+        f"Source checks: fixtures={report.total_fixtures} "
+        f"checks={report.total_checks}"
+    )
+    console.print(counts)
+    for check in report.checks:
+        console.print(
+            f"{check.source} {check.action} "
+            f"{check.home_team} vs {check.away_team}: {check.reason}"
         )
 
 

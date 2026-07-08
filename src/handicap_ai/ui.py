@@ -22,6 +22,7 @@ from handicap_ai.database import Database
 from handicap_ai.demo_data import prepare_demo_data
 from handicap_ai.live_analysis import LiveAnalysisResult, analyze_saved_html
 from handicap_ai.scorecard import build_scorecard, feature_payload
+from handicap_ai.source_checks import build_source_checks
 from handicap_ai.source_matrix import build_source_matrix
 from handicap_ai.source_discovery import (
     SourceLinkResult,
@@ -321,6 +322,10 @@ def create_app(
     @app.get("/api/source-matrix")
     def source_matrix_endpoint():
         return build_source_matrix(database).to_dict()
+
+    @app.get("/api/source-checks")
+    def source_checks_endpoint(limit: int | None = 50, action: str | None = None):
+        return build_source_checks(database, limit=limit, action=action).to_dict()
 
     @app.post("/api/backtest")
     def backtest_endpoint(payload: BacktestRequest):

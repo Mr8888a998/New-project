@@ -107,6 +107,7 @@
               <button id="prepare-demo-data-button" type="button">Prepare demo data</button>
               <button id="refresh-source-status-button" type="button">Refresh source status</button>
               <button id="refresh-source-matrix-button" type="button">Refresh source matrix</button>
+              <button id="refresh-source-checks-button" type="button">Batch source checks</button>
               <button id="run-backtest-button" type="button">Run backtest</button>
             </div>
             <div id="source-link-list" class="source-link-list">
@@ -131,6 +132,16 @@
             </div>
             <div id="source-matrix-list" class="metric-list">
               <span>Scan BetExplorer and OddsPortal coverage.</span>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <span class="label">Batch source checks</span>
+              <strong id="source-checks-status">Not loaded</strong>
+            </div>
+            <div id="source-checks-list" class="metric-list">
+              <span>Batch check fixture source actions.</span>
             </div>
           </article>
 
@@ -214,6 +225,7 @@
       const prepareDemoDataButton = document.querySelector("#prepare-demo-data-button");
       const refreshSourceStatusButton = document.querySelector("#refresh-source-status-button");
       const refreshSourceMatrixButton = document.querySelector("#refresh-source-matrix-button");
+      const refreshSourceChecksButton = document.querySelector("#refresh-source-checks-button");
       const runBacktestButton = document.querySelector("#run-backtest-button");
       let workspaceRequestId = 0;
 
@@ -242,6 +254,7 @@
         prepareDemoDataButton.disabled = isBusy;
         refreshSourceStatusButton.disabled = isBusy;
         refreshSourceMatrixButton.disabled = isBusy;
+        refreshSourceChecksButton.disabled = isBusy;
         runBacktestButton.disabled = isBusy;
       }
 
@@ -568,6 +581,25 @@
         }
       }
 
+      function renderSourceChecks(body) {
+        setText(
+          "#source-checks-status",
+          `${body.total_checks} checked`
+        );
+        const list = document.querySelector("#source-checks-list");
+        list.replaceChildren();
+        const summary = document.createElement("span");
+        summary.textContent = Object.entries(body.by_action || {})
+          .map(([action, count]) => `${action}: ${count}`)
+          .join(" | ");
+        list.appendChild(summary);
+        for (const check of (body.checks || []).slice(0, 8)) {
+          const item = document.createElement("span");
+          item.textContent = `${check.source} ${check.action} ${check.home_team} vs ${check.away_team}: ${check.reason}`;
+          list.appendChild(item);
+        }
+      }
+
       function clearAnalysis() {
         setText("#match-title", "Match pending");
         setText("#coverage-status", "Pending");
@@ -619,6 +651,21 @@
         }
       }
 
+      async function refreshSourceChecks() {
+        setSourceBusy(true);
+        message.textContent = "Refreshing batch source checks";
+        try {
+          const response = await fetch("/api/source-checks?limit=20");
+          if (!response.ok) {
+            throw new Error(await errorMessage(response));
+          }
+          renderSourceChecks(await response.json());
+          message.textContent = "Batch source checks loaded";
+        } finally {
+          setSourceBusy(false);
+        }
+      }
+
       async function runBacktest() {
         setSourceBusy(true);
         message.textContent = "Running backtest";
@@ -656,6 +703,7 @@
         }
         await refreshSourceStatus();
         await refreshSourceMatrix();
+        await refreshSourceChecks();
         await runBacktest();
       }
 
@@ -804,6 +852,15 @@
         } catch (error) {
           message.textContent = error.message;
           setText("#source-matrix-status", "Error");
+        }
+      });
+
+      refreshSourceChecksButton.addEventListener("click", async () => {
+        try {
+          await refreshSourceChecks();
+        } catch (error) {
+          message.textContent = error.message;
+          setText("#source-checks-status", "Error");
         }
       });
 

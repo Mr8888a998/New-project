@@ -43,6 +43,9 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "Source matrix" in response.text
     assert 'id="refresh-source-matrix-button"' in response.text
     assert "/api/source-matrix" in response.text
+    assert "Batch source checks" in response.text
+    assert 'id="refresh-source-checks-button"' in response.text
+    assert "/api/source-checks" in response.text
     assert "Feature panel" in response.text
     assert "Backtest" in response.text
     assert 'id="source-url"' in response.text
@@ -129,6 +132,21 @@ def test_source_matrix_endpoint_returns_two_source_summary(tmp_path):
     assert body["total_source_cells"] == 144
     assert body["sources"]["betexplorer"]["by_status"]["pending"] == 72
     assert body["sources"]["oddsportal"]["by_status"]["pending"] == 72
+
+
+def test_source_checks_endpoint_returns_batch_candidate_actions(tmp_path):
+    app = create_app(db_path=tmp_path / "handicap.sqlite")
+    client = TestClient(app)
+
+    response = client.get("/api/source-checks?limit=5")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_fixtures"] == 72
+    assert body["total_checks"] == 144
+    assert body["by_action"]["needs_url"] == 144
+    assert len(body["checks"]) == 5
+    assert body["checks"][0]["action"] == "needs_url"
 
 
 def test_backtest_endpoint_returns_market_summary(tmp_path):
