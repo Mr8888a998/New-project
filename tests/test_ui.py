@@ -49,6 +49,10 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert "Cache HTML scan" in response.text
     assert 'id="refresh-cache-scan-button"' in response.text
     assert "/api/cache-scan" in response.text
+    assert "Manual HTML paste" in response.text
+    assert 'id="manual-html"' in response.text
+    assert 'id="save-manual-html-button"' in response.text
+    assert "/api/save-manual-html" in response.text
     assert "Feature panel" in response.text
     assert "Backtest" in response.text
     assert 'id="source-url"' in response.text
@@ -168,6 +172,31 @@ def test_cache_scan_endpoint_returns_cache_availability(tmp_path):
     assert body["invalid_files"] == 1
     assert body["orphan_files"] == 1
     assert body["files"][0]["status"] == "invalid"
+
+
+def test_save_manual_html_endpoint_caches_without_url(tmp_path):
+    app = create_app(
+        db_path=tmp_path / "handicap.sqlite",
+        cache_dir=tmp_path / "cache",
+    )
+    client = TestClient(app)
+    html = Path("tests/fixtures/betexplorer_match.html").read_text(encoding="utf-8")
+
+    response = client.post(
+        "/api/save-manual-html",
+        json={
+            "home_team": "England",
+            "away_team": "Panama",
+            "source": "betexplorer",
+            "html": html,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "available"
+    assert body["url"] is None
+    assert Path(body["html_path"]).is_file()
 
 
 def test_backtest_endpoint_returns_market_summary(tmp_path):

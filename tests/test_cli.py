@@ -125,6 +125,35 @@ def test_cache_scan_command_prints_cache_availability(tmp_path):
     assert "betexplorer invalid" in result.output
 
 
+def test_save_manual_html_command_caches_without_url(tmp_path):
+    db_path = tmp_path / "handicap.sqlite"
+    cache_dir = tmp_path / "cache"
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "save-manual-html",
+            "--db",
+            str(db_path),
+            "--cache-dir",
+            str(cache_dir),
+            "--home",
+            "England",
+            "--away",
+            "Panama",
+            "--source",
+            "betexplorer",
+            "--html",
+            "tests/fixtures/betexplorer_match.html",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Manual HTML: status=available" in result.output
+    assert "html=" in result.output
+
+
 def test_prepare_demo_data_command_seeds_usable_local_data(tmp_path):
     db_path = tmp_path / "handicap.sqlite"
     runner = CliRunner()

@@ -18,6 +18,7 @@ from handicap_ai.history_import import import_history_folder
 from handicap_ai.ingest import ingest_bundles
 from handicap_ai.labels import label_to_recommendation_bucket
 from handicap_ai.live_analysis import analyze_saved_html
+from handicap_ai.manual_html import save_manual_fixture_html
 from handicap_ai.demo_data import prepare_demo_data
 from handicap_ai.recommendation import RecommendationEngine
 from handicap_ai.report import render_text_report
@@ -218,6 +219,39 @@ def fetch_source_html(
             )
         )
     _print_source_result(result)
+
+
+@app.command("save-manual-html")
+def save_manual_html(
+    home: str = typer.Option(..., "--home"),
+    away: str = typer.Option(..., "--away"),
+    source: str = typer.Option(..., "--source"),
+    html: Path = typer.Option(..., "--html"),
+    cache_dir: Path = typer.Option(Path("data/cache"), "--cache-dir"),
+    season: str = typer.Option("2026", "--season"),
+    db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
+) -> None:
+    database = Database(db)
+    database.migrate()
+    import_world_cup_2026_seed(database, overwrite_existing=False)
+    html_text = _read_text_option(html, "manual HTML")
+    result = _run_source_action(
+        lambda: save_manual_fixture_html(
+            database,
+            home_team=home,
+            away_team=away,
+            source=source,
+            html=html_text,
+            cache_dir=cache_dir,
+            season=season,
+        )
+    )
+    details = [f"Manual HTML: status={result.status.value}"]
+    if result.html_path:
+        details.append(f"html={result.html_path}")
+    console.print(" ".join(details), soft_wrap=True)
+    for warning in result.warnings:
+        console.print(f"Warning: {warning}")
 
 
 @app.command("analyze")

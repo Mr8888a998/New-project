@@ -101,7 +101,10 @@
             <div class="source-actions">
               <label for="source-url">Manual source URL</label>
               <input id="source-url" type="url" required placeholder="https://www.betexplorer.com/...">
+              <label for="manual-html">Manual HTML paste</label>
+              <textarea id="manual-html" rows="6" placeholder="Paste saved match HTML here"></textarea>
               <button id="register-source-url-button" type="button">Register source URL</button>
+              <button id="save-manual-html-button" type="button">Save manual HTML</button>
               <button id="discover-sources-button" type="button">Discover sources</button>
               <button id="fetch-source-html-button" type="button">Fetch source HTML</button>
               <button id="prepare-demo-data-button" type="button">Prepare demo data</button>
@@ -231,6 +234,7 @@
       const findCandidatesButton = document.querySelector("#find-candidates-button");
       const autoAnalyzeButton = document.querySelector("#auto-analyze-button");
       const registerSourceUrlButton = document.querySelector("#register-source-url-button");
+      const saveManualHtmlButton = document.querySelector("#save-manual-html-button");
       const discoverSourcesButton = document.querySelector("#discover-sources-button");
       const fetchSourceHtmlButton = document.querySelector("#fetch-source-html-button");
       const prepareDemoDataButton = document.querySelector("#prepare-demo-data-button");
@@ -261,6 +265,7 @@
         findCandidatesButton.disabled = isBusy;
         autoAnalyzeButton.disabled = isBusy;
         registerSourceUrlButton.disabled = isBusy;
+        saveManualHtmlButton.disabled = isBusy;
         discoverSourcesButton.disabled = isBusy;
         fetchSourceHtmlButton.disabled = isBusy;
         prepareDemoDataButton.disabled = isBusy;
@@ -855,6 +860,29 @@
             ...selectedFixture(),
             url: sourceUrlInput.value,
           });
+        } catch (error) {
+          message.textContent = error.message;
+          setText("#source-link-status", "Error");
+        }
+      });
+
+      saveManualHtmlButton.addEventListener("click", async () => {
+        try {
+          const manualHtmlInput = document.querySelector("#manual-html");
+          const html = manualHtmlInput.value.trim();
+          if (!html) {
+            message.textContent = "Paste manual HTML first";
+            setText("#source-link-status", "HTML required");
+            return;
+          }
+          await postSourceAction("/api/save-manual-html", {
+            ...selectedFixture(),
+            html,
+          });
+          await refreshCacheScan();
+          await refreshSourceStatus();
+          await refreshSourceMatrix();
+          await refreshSourceChecks();
         } catch (error) {
           message.textContent = error.message;
           setText("#source-link-status", "Error");

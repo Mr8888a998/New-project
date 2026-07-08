@@ -51,11 +51,12 @@ backtest panels.
 handicap-ai discover-sources --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer
 handicap-ai register-source-url --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer --url https://www.betexplorer.com/football/world/world-cup/england-ghana/example/
 handicap-ai fetch-source-html --db data/handicap_ai.sqlite --home England --away Ghana --source betexplorer
+handicap-ai save-manual-html --db data/handicap_ai.sqlite --home England --away Panama --source betexplorer --html tests/fixtures/betexplorer_match.html
 ```
 
 Source discovery and fetching are user-triggered. If a site blocks automated
-access, paste a manually saved HTML path in the dashboard and use the saved-HTML
-analysis flow.
+access, paste saved match HTML in the dashboard or pass an HTML file to
+`save-manual-html` to cache and register it without requiring a source URL.
 
 ## Auto Analyze From UI
 

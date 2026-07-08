@@ -22,6 +22,7 @@ from handicap_ai.candidate_search import FixtureCandidate, find_world_cup_candid
 from handicap_ai.database import Database
 from handicap_ai.demo_data import prepare_demo_data
 from handicap_ai.live_analysis import LiveAnalysisResult, analyze_saved_html
+from handicap_ai.manual_html import save_manual_fixture_html
 from handicap_ai.scorecard import build_scorecard, feature_payload
 from handicap_ai.source_checks import build_source_checks
 from handicap_ai.source_matrix import build_source_matrix
@@ -75,6 +76,13 @@ class SourceFetchRequest(BaseModel):
     away_team: str
     source: str
     response_html: str | None = None
+
+
+class ManualHtmlRequest(BaseModel):
+    home_team: str
+    away_team: str
+    source: str
+    html: str
 
 
 class AutoAnalyzeRequest(BaseModel):
@@ -293,6 +301,21 @@ def create_app(
                     source=payload.source,
                     cache_dir=cache_dir,
                 )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _source_link_payload(result)
+
+    @app.post("/api/save-manual-html")
+    def save_manual_html_endpoint(payload: ManualHtmlRequest):
+        try:
+            result = save_manual_fixture_html(
+                database,
+                home_team=payload.home_team,
+                away_team=payload.away_team,
+                source=payload.source,
+                html=payload.html,
+                cache_dir=cache_dir,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return _source_link_payload(result)

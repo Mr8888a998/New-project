@@ -95,7 +95,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -103,6 +104,12 @@ select {
   color: var(--text);
   min-height: 42px;
   padding: 9px 11px;
+}
+
+textarea {
+  font-family: inherit;
+  min-height: 120px;
+  resize: vertical;
 }
 
 input[readonly] {
@@ -332,6 +339,7 @@ li + li {
 }
 
 #register-source-url-button,
+#save-manual-html-button,
 #discover-sources-button,
 #fetch-source-html-button,
 #prepare-demo-data-button,
@@ -345,6 +353,8 @@ li + li {
 
 #register-source-url-button:hover,
 #register-source-url-button:focus-visible,
+#save-manual-html-button:hover,
+#save-manual-html-button:focus-visible,
 #discover-sources-button:hover,
 #discover-sources-button:focus-visible,
 #fetch-source-html-button:hover,
