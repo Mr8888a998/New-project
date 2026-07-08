@@ -278,6 +278,7 @@ def backtest(
     db: Path = typer.Option(Path("data/handicap_ai.sqlite"), "--db"),
     limit: int | None = typer.Option(None, "--limit"),
     prior_only: bool = typer.Option(True, "--prior-only/--all-history"),
+    details_limit: int = typer.Option(5, "--details-limit"),
 ) -> None:
     database = Database(db)
     database.migrate()
@@ -289,6 +290,15 @@ def backtest(
             f"misses={summary.misses} no_bets={summary.no_bets} "
             f"pushes={summary.pushes} hit_rate={summary.hit_rate:.2%}"
         )
+    if report.matches and details_limit > 0:
+        console.print("Match details:")
+        for match in report.matches[:details_limit]:
+            console.print(
+                f"- {match.home_team} vs {match.away_team} {match.score}: "
+                f"{_backtest_market_detail(match, 'handicap')} | "
+                f"{_backtest_market_detail(match, 'total')} | "
+                f"{_backtest_market_detail(match, '1x2')}"
+            )
 
 
 @app.command("source-status")
@@ -499,6 +509,13 @@ def _print_source_result(result: SourceLinkResult) -> None:
     console.print(" ".join(details), soft_wrap=True)
     for warning in result.warnings:
         console.print(f"Warning: {warning}")
+
+
+def _backtest_market_detail(match, market: str) -> str:
+    pick = match.picks.get(market, "-")
+    label = match.labels.get(market, "-")
+    result = match.results.get(market, "-")
+    return f"{market}={pick}/{label}/{result}"
 
 
 def _similar_matches(database: Database, match_id: int, features):

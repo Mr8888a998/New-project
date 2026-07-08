@@ -119,6 +119,14 @@ def test_run_backtest_summarizes_three_markets(tmp_path):
     assert report.markets["1x2"].hit_rate >= 0.0
     assert report.to_dict()["markets"]["handicap"]["picks"] > 0
 
+    first_match = report.to_dict()["matches"][0]
+    assert first_match["score"] == "2-0"
+    assert first_match["home_score"] == 2
+    assert first_match["away_score"] == 0
+    assert first_match["kickoff_time"].startswith("2026-06-01")
+    assert set(first_match["results"]) == {"handicap", "total", "1x2"}
+    assert first_match["results"]["1x2"] in {"hit", "miss", "no_bet"}
+
 
 def test_run_backtest_can_limit_finished_matches(tmp_path):
     db = Database(tmp_path / "handicap.sqlite")

@@ -202,6 +202,8 @@ def test_save_manual_html_endpoint_caches_without_url(tmp_path):
 def test_backtest_endpoint_returns_market_summary(tmp_path):
     app = create_app(db_path=tmp_path / "handicap.sqlite")
     client = TestClient(app)
+    prepare_response = client.post("/api/prepare-demo-data")
+    assert prepare_response.status_code == 200
 
     response = client.post("/api/backtest", json={"limit": 10})
 
@@ -209,6 +211,11 @@ def test_backtest_endpoint_returns_market_summary(tmp_path):
     body = response.json()
     assert set(body["markets"]) == {"handicap", "total", "1x2"}
     assert body["markets"]["handicap"]["picks"] >= 0
+    assert body["matches"]
+    first_match = body["matches"][0]
+    assert "score" in first_match
+    assert "kickoff_time" in first_match
+    assert set(first_match["results"]) == {"handicap", "total", "1x2"}
 
 
 def test_prepare_demo_data_endpoint_seeds_usable_local_data(tmp_path):

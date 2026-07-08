@@ -59,6 +59,8 @@ def test_backtest_command_prints_market_summary(tmp_path):
     assert "handicap" in result.output
     assert "total" in result.output
     assert "1x2" in result.output
+    assert "Match details" in result.output
+    assert "England vs Panama 2-0" in result.output
 
 
 def test_source_status_command_prints_readiness(tmp_path):

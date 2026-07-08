@@ -45,18 +45,28 @@ class BacktestMatchResult:
     match_id: int
     home_team: str
     away_team: str
+    kickoff_time: str | None
+    score: str
+    home_score: int
+    away_score: int
     picks: Mapping[str, str]
     labels: Mapping[str, str]
     hits: Mapping[str, bool | None]
+    results: Mapping[str, str]
 
     def to_dict(self) -> dict[str, object]:
         return {
             "match_id": self.match_id,
             "home_team": self.home_team,
             "away_team": self.away_team,
+            "kickoff_time": self.kickoff_time,
+            "score": self.score,
+            "home_score": self.home_score,
+            "away_score": self.away_score,
             "picks": dict(self.picks),
             "labels": dict(self.labels),
             "hits": dict(self.hits),
+            "results": dict(self.results),
         }
 
 
@@ -138,23 +148,35 @@ def run_backtest(
 
     for row in rows:
         match_id = int(row["match_id"])
+        home_score = int(row["home_score"])
+        away_score = int(row["away_score"])
         features = _features_for_match(db, match_id)
         similar = _similar_matches(db, row, rows, features, prior_only=prior_only)
         report = RecommendationEngine().recommend(features, similar=similar)
         labels = _settled_labels(db, row)
-        picks = _picks(report)
+        pick_values = _pick_values(report)
+        picks = _picks_from_values(pick_values)
         hits = {
             market: accumulators[market].observe(pick, labels.get(market))
-            for market, pick in _pick_values(report).items()
+            for market, pick in pick_values.items()
+        }
+        results = {
+            market: _market_result(pick, labels.get(market), hits.get(market))
+            for market, pick in pick_values.items()
         }
         match_results.append(
             BacktestMatchResult(
                 match_id=match_id,
                 home_team=str(row["home_team"]),
                 away_team=str(row["away_team"]),
+                kickoff_time=_row_text(row, "kickoff_time"),
+                score=f"{home_score}-{away_score}",
+                home_score=home_score,
+                away_score=away_score,
                 picks=picks,
                 labels=labels,
                 hits=hits,
+                results=results,
             )
         )
 
@@ -245,10 +267,29 @@ def _pick_values(report: RecommendationReport) -> dict[str, Pick]:
 
 
 def _picks(report: RecommendationReport) -> dict[str, str]:
+    return _picks_from_values(_pick_values(report))
+
+
+def _picks_from_values(values: Mapping[str, Pick]) -> dict[str, str]:
     return {
         market: pick.value
-        for market, pick in _pick_values(report).items()
+        for market, pick in values.items()
     }
+
+
+def _market_result(pick: Pick, label: str | None, hit: bool | None) -> str:
+    if pick is Pick.NO_BET:
+        return "no_bet"
+    if label is None:
+        return "no_label"
+    if label == "push":
+        return "push"
+    return "hit" if hit else "miss"
+
+
+def _row_text(row: sqlite3.Row, field: str) -> str | None:
+    value = row[field]
+    return None if value is None else str(value)
 
 
 def _last_line_value(rows: list[sqlite3.Row], field: str) -> float | None:

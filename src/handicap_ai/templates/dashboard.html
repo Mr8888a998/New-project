@@ -580,6 +580,20 @@
           item.textContent = `${market}: ${summary.hits}/${summary.picks} ${Number(summary.hit_rate || 0).toFixed(2)}`;
           list.appendChild(item);
         }
+        const matches = body.matches || [];
+        if (matches.length) {
+          const detailHeading = document.createElement("span");
+          detailHeading.textContent = "Match details";
+          list.appendChild(detailHeading);
+        }
+        for (const match of matches.slice(0, 8)) {
+          const item = document.createElement("span");
+          const markets = ["handicap", "total", "1x2"]
+            .map((market) => `${market}: ${(match.picks || {})[market] || "-"} / ${(match.labels || {})[market] || "-"} / ${(match.results || {})[market] || "-"}`)
+            .join(" | ");
+          item.textContent = `${match.home_team} vs ${match.away_team} ${match.score || "-"}: ${markets}`;
+          list.appendChild(item);
+        }
       }
 
       function renderSourceMatrix(body) {
