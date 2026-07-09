@@ -1,7 +1,7 @@
 from handicap_ai.features import MatchFeatures
 from handicap_ai.models import Pick
 from handicap_ai.recommendation import MarketRecommendation, RecommendationReport
-from handicap_ai.scorecard import build_scorecard, feature_payload
+from handicap_ai.scorecard import build_feature_panel, build_scorecard, feature_payload
 
 
 def _features() -> MatchFeatures:
@@ -80,3 +80,29 @@ def test_feature_payload_exposes_line_and_water_movement():
     assert payload["handicap"]["home_water_delta"] == -0.07
     assert payload["total"]["delta"] == 0.25
     assert payload["one_x_two"]["home"] == 1.3
+
+
+def test_build_feature_panel_groups_handicap_total_euro_and_quality():
+    panel = build_feature_panel(_features(), risk_tags=("line_too_deep", "favorite_heat"))
+
+    assert [section["id"] for section in panel["sections"]] == [
+        "handicap",
+        "total",
+        "one_x_two",
+        "quality",
+    ]
+    handicap_items = panel["sections"][0]["items"]
+    assert handicap_items[0] == {"label": "Open", "value": -1.75, "risk": None}
+    assert handicap_items[1] == {"label": "Close", "value": -2.25, "risk": "line_too_deep"}
+    assert handicap_items[2]["label"] == "Move"
+    assert handicap_items[3]["label"] == "Home water"
+    assert panel["sections"][2]["items"][-1] == {
+        "label": "Disagreement",
+        "value": 0.2,
+        "risk": None,
+    }
+    assert panel["sections"][3]["items"][0] == {
+        "label": "Data quality",
+        "value": 1.0,
+        "risk": None,
+    }

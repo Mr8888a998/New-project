@@ -23,7 +23,7 @@ from handicap_ai.database import Database
 from handicap_ai.demo_data import prepare_demo_data
 from handicap_ai.live_analysis import LiveAnalysisResult, analyze_saved_html
 from handicap_ai.manual_html import save_manual_fixture_html
-from handicap_ai.scorecard import build_scorecard, feature_payload
+from handicap_ai.scorecard import build_feature_panel, build_scorecard, feature_payload
 from handicap_ai.source_checks import build_source_checks
 from handicap_ai.source_matrix import build_source_matrix
 from handicap_ai.source_discovery import (
@@ -115,6 +115,7 @@ def _report_payload(result: LiveAnalysisResult) -> dict[str, object]:
         },
         "data_quality": result.report.data_quality_score,
         "features": feature_payload(result.features),
+        "feature_panel": build_feature_panel(result.features, result.report.risk_tags),
         "scores": asdict(scorecard),
         "market_scores": scorecard.market_scores(),
         "reasons": {

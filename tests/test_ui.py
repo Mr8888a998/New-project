@@ -54,6 +54,9 @@ def test_dashboard_route_renders_workspace(tmp_path):
     assert 'id="save-manual-html-button"' in response.text
     assert "/api/save-manual-html" in response.text
     assert "Feature panel" in response.text
+    assert 'id="feature-panel-sections"' in response.text
+    assert "function renderFeatures(features, featurePanel = {})" in response.text
+    assert "featurePanel.sections" in response.text
     assert "Backtest" in response.text
     assert 'id="source-url"' in response.text
     assert "required" in response.text
@@ -112,6 +115,15 @@ def test_saved_html_analysis_endpoint_returns_recommendations(tmp_path):
     assert body["features"]["handicap"]["open"] == -1.75
     assert body["scores"]["total"]["pick"] in {"over", "under", "no_bet"}
     assert body["reasons"]["handicap"]
+    assert [section["id"] for section in body["feature_panel"]["sections"]] == [
+        "handicap",
+        "total",
+        "one_x_two",
+        "quality",
+    ]
+    assert body["feature_panel"]["sections"][0]["title"] == "Handicap"
+    assert body["feature_panel"]["sections"][0]["items"][0]["label"] == "Open"
+    assert body["feature_panel"]["sections"][2]["items"][-1]["label"] == "Disagreement"
     assert set(body["market_scores"]) == {"handicap", "total", "1x2"}
     assert set(body["market_scores"]["handicap"]) == {
         "pick",

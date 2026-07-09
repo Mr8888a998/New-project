@@ -94,6 +94,79 @@ def feature_payload(features: MatchFeatures) -> dict[str, object]:
     }
 
 
+def build_feature_panel(
+    features: MatchFeatures,
+    risk_tags: tuple[str, ...] = (),
+) -> dict[str, object]:
+    return {
+        "sections": [
+            {
+                "id": "handicap",
+                "title": "Handicap",
+                "items": [
+                    _panel_item("Open", features.open_handicap),
+                    _panel_item(
+                        "Close",
+                        features.close_handicap,
+                        "line_too_deep" if "line_too_deep" in risk_tags else None,
+                    ),
+                    _panel_item(
+                        "Move",
+                        features.handicap_delta,
+                        "favorite_heat" if "favorite_heat" in risk_tags else None,
+                    ),
+                    _panel_item("Home water", features.home_water_delta),
+                    _panel_item("Away water", features.away_water_delta),
+                    _panel_item("Pattern", _pattern(features, 0)),
+                    _panel_item("Depth", features.line_depth_score),
+                ],
+            },
+            {
+                "id": "total",
+                "title": "Total",
+                "items": [
+                    _panel_item("Open", features.open_total),
+                    _panel_item("Close", features.close_total),
+                    _panel_item("Move", features.total_delta),
+                    _panel_item("Over water", features.over_water_delta),
+                    _panel_item("Under water", features.under_water_delta),
+                    _panel_item("Pattern", _pattern(features, 1)),
+                ],
+            },
+            {
+                "id": "one_x_two",
+                "title": "1X2",
+                "items": [
+                    _panel_item("Home", features.closing_home_win_price),
+                    _panel_item("Draw", features.closing_draw_price),
+                    _panel_item("Away", features.closing_away_win_price),
+                    _panel_item(
+                        "Disagreement",
+                        features.market_disagreement_score,
+                        (
+                            "market_disagreement"
+                            if "market_disagreement" in risk_tags
+                            else None
+                        ),
+                    ),
+                ],
+            },
+            {
+                "id": "quality",
+                "title": "Quality",
+                "items": [
+                    _panel_item(
+                        "Data quality",
+                        features.data_quality_score,
+                        "low_data_quality" if "low_data_quality" in risk_tags else None,
+                    ),
+                    _panel_item("Risk tags", ", ".join(risk_tags) if risk_tags else "none"),
+                ],
+            },
+        ]
+    }
+
+
 def _market_score(
     recommendation: MarketRecommendation,
     risk_tags: tuple[str, ...],
@@ -125,6 +198,14 @@ def _market_score(
         score=_clamp_score(raw_score),
         reason=recommendation.reason,
     )
+
+
+def _panel_item(label: str, value: object, risk: str | None = None) -> dict[str, object]:
+    return {
+        "label": label,
+        "value": value,
+        "risk": risk,
+    }
 
 
 def _pattern(features: MatchFeatures, index: int) -> str | None:

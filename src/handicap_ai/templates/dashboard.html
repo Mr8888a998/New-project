@@ -174,17 +174,8 @@
               <span class="label">Feature panel</span>
               <strong id="feature-summary">Waiting</strong>
             </div>
-            <div class="feature-grid">
-              <span>AH open</span><strong id="feature-ah-open">-</strong>
-              <span>AH close</span><strong id="feature-ah-close">-</strong>
-              <span>AH delta</span><strong id="feature-ah-delta">-</strong>
-              <span>Total open</span><strong id="feature-total-open">-</strong>
-              <span>Total close</span><strong id="feature-total-close">-</strong>
-              <span>Total delta</span><strong id="feature-total-delta">-</strong>
-              <span>Home water</span><strong id="feature-home-water">-</strong>
-              <span>Over water</span><strong id="feature-over-water">-</strong>
-              <span>Euro home</span><strong id="feature-1x2-home">-</strong>
-              <span>Disagreement</span><strong id="feature-disagreement">-</strong>
+            <div id="feature-panel-sections" class="feature-sections">
+              <p>盘口特征会在分析后显示。</p>
             </div>
           </article>
 
@@ -508,7 +499,7 @@
         setText("#handicap-confidence", scoreSummary(marketScores.handicap, body.confidence.handicap));
         setText("#total-confidence", scoreSummary(marketScores.total, body.confidence.total));
         setText("#one-x-two-confidence", scoreSummary(marketScores["1x2"], body.confidence["1x2"]));
-        renderFeatures(body.features || {});
+        renderFeatures(body.features || {}, body.feature_panel || {});
         renderScores(body.scores || {}, body.reasons || {}, marketScores);
 
         const riskTags = document.querySelector("#risk-tags");
@@ -533,21 +524,41 @@
         return `${score.confidence} confidence | score ${score.score}`;
       }
 
-      function renderFeatures(features) {
-        const handicap = features.handicap || {};
-        const total = features.total || {};
-        const oneXTwo = features.one_x_two || {};
-        setText("#feature-ah-open", displayValue(handicap.open));
-        setText("#feature-ah-close", displayValue(handicap.close));
-        setText("#feature-ah-delta", displayValue(handicap.delta));
-        setText("#feature-total-open", displayValue(total.open));
-        setText("#feature-total-close", displayValue(total.close));
-        setText("#feature-total-delta", displayValue(total.delta));
-        setText("#feature-home-water", displayValue(handicap.home_water_delta));
-        setText("#feature-over-water", displayValue(total.over_water_delta));
-        setText("#feature-1x2-home", displayValue(oneXTwo.home));
-        setText("#feature-disagreement", displayValue(oneXTwo.market_disagreement_score));
+      function renderFeatures(features, featurePanel = {}) {
         setText("#feature-summary", displayValue(features.data_quality));
+        const sections = document.querySelector("#feature-panel-sections");
+        sections.replaceChildren();
+        const panelSections = featurePanel.sections || [];
+        if (!panelSections.length) {
+          const empty = document.createElement("p");
+          empty.textContent = "盘口特征会在分析后显示。";
+          sections.appendChild(empty);
+          return;
+        }
+        for (const section of panelSections) {
+          const sectionNode = document.createElement("section");
+          sectionNode.className = "feature-section";
+          const heading = document.createElement("h3");
+          heading.textContent = section.title;
+          sectionNode.appendChild(heading);
+
+          const grid = document.createElement("div");
+          grid.className = "feature-grid";
+          for (const item of section.items || []) {
+            const label = document.createElement("span");
+            label.textContent = item.label;
+            const value = document.createElement("strong");
+            value.textContent = displayValue(item.value);
+            if (item.risk) {
+              value.dataset.risk = item.risk;
+              value.title = item.risk;
+            }
+            grid.appendChild(label);
+            grid.appendChild(value);
+          }
+          sectionNode.appendChild(grid);
+          sections.appendChild(sectionNode);
+        }
       }
 
       function renderScores(scores, reasons, marketScores = {}) {
@@ -675,7 +686,7 @@
         setText("#handicap-confidence", "Confidence pending");
         setText("#total-confidence", "Confidence pending");
         setText("#one-x-two-confidence", "Confidence pending");
-        renderFeatures({});
+        renderFeatures({}, {});
         renderScores({}, {});
 
         const riskTags = document.querySelector("#risk-tags");
